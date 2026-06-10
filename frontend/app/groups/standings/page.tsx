@@ -49,6 +49,17 @@ type GroupsResponse = {
   data: Group[];
 };
 
+type SavedGroupPrediction = {
+  group_id: string;
+  team_id: string;
+  predicted_position: number;
+};
+
+type PredictionsResponse = {
+  count: number;
+  data: SavedGroupPrediction[];
+};
+
 function getPositionColor(position: number) {
   if (position === 1 || position === 2) {
     return "bg-green-500 text-white border-green-300/40";
@@ -178,8 +189,14 @@ export default function GroupsPage() {
 
         setToken(session.access_token);
 
-        const [response, locksResponse] = await Promise.all([
+        const [response, predictionsResponse, locksResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/groups/with-teams`, { cache: "no-store" }),
+          fetch(`${API_BASE_URL}/group-predictions`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
           fetch(`${API_BASE_URL}/locks/status`, {
             headers: {
               Authorization: `Bearer ${session.access_token}`,
@@ -192,16 +209,57 @@ export default function GroupsPage() {
           throw new Error("Failed to load groups");
         }
 
+        if (!predictionsResponse.ok) {
+          throw new Error("Failed to load your group predictions");
+        }
+
         const result: GroupsResponse = await response.json();
+        const savedResult: PredictionsResponse =
+          await predictionsResponse.json();
         const locksJson = await locksResponse.json().catch(() => null);
 
         setGroups(result.data);
         setLock(mapLocksByKey(locksJson?.data || []).GROUP_STANDINGS || null);
 
         const initialPredictions: Record<string, Team[]> = {};
+        const savedByGroup: Record<string, SavedGroupPrediction[]> = {};
+
+        savedResult.data.forEach((prediction) => {
+          if (!savedByGroup[prediction.group_id]) {
+            savedByGroup[prediction.group_id] = [];
+          }
+
+          savedByGroup[prediction.group_id].push(prediction);
+        });
 
         result.data.forEach((group) => {
-          initialPredictions[group.id] = group.teams;
+          const savedGroupPredictions = savedByGroup[group.id] || [];
+
+          if (savedGroupPredictions.length === 0) {
+            initialPredictions[group.id] = group.teams;
+            return;
+          }
+
+          const teamsById = new Map(
+            group.teams.map((team) => [team.id, team])
+          );
+
+          const orderedSavedTeams = [...savedGroupPredictions]
+            .sort((a, b) => a.predicted_position - b.predicted_position)
+            .map((prediction) => teamsById.get(prediction.team_id))
+            .filter((team): team is Team => Boolean(team));
+
+          const missingTeams = group.teams.filter(
+            (team) =>
+              !savedGroupPredictions.some(
+                (prediction) => prediction.team_id === team.id
+              )
+          );
+
+          initialPredictions[group.id] = [
+            ...orderedSavedTeams,
+            ...missingTeams,
+          ];
         });
 
         setPredictions(initialPredictions);
