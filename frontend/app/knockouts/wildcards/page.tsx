@@ -6,6 +6,12 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Star, Trophy } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
+import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import {
+  getLockedButtonLabel,
+  mapLocksByKey,
+  type LockStatus,
+} from "@/lib/locks";
 import { supabase } from "@/lib/supabase/client";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -62,6 +68,14 @@ const ROUND_SHORT_LABELS: Record<KnockoutWildcardRound, string> = {
   QUARTER_FINAL: "QF",
   SEMI_FINAL: "SF",
   FINAL: "Final",
+};
+
+const WILDCARD_LOCK_KEYS: Record<KnockoutWildcardRound, string> = {
+  ROUND_OF_32: "KNOCKOUT_WILDCARD_ROUND_OF_32",
+  ROUND_OF_16: "KNOCKOUT_WILDCARD_ROUND_OF_16",
+  QUARTER_FINAL: "KNOCKOUT_WILDCARD_QUARTER_FINAL",
+  SEMI_FINAL: "KNOCKOUT_WILDCARD_SEMI_FINAL",
+  FINAL: "KNOCKOUT_WILDCARD_FINAL",
 };
 
 function getCircularIndex(
@@ -149,6 +163,7 @@ export default function KnockoutWildcardsPage() {
   const router = useRouter();
 
   const [token, setToken] = useState<string | null>(null);
+  const [locksByKey, setLocksByKey] = useState<Record<string, LockStatus>>({});
 
   const [optionGroups, setOptionGroups] = useState<WildcardOptionGroup[]>([]);
   const [currentRound, setCurrentRound] =
@@ -193,7 +208,7 @@ export default function KnockoutWildcardsPage() {
 
         setToken(session.access_token);
 
-        const [optionsResponse, savedResponse] = await Promise.all([
+        const [optionsResponse, savedResponse, locksResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/knockout-wildcards/options`, {
             headers: {
               Authorization: `Bearer ${session.access_token}`,
@@ -206,10 +221,17 @@ export default function KnockoutWildcardsPage() {
             },
             cache: "no-store",
           }),
+          fetch(`${API_BASE_URL}/locks/status`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
         ]);
 
         const optionsJson = await optionsResponse.json().catch(() => null);
         const savedJson = await savedResponse.json().catch(() => null);
+        const locksJson = await locksResponse.json().catch(() => null);
 
         if (!optionsResponse.ok) {
           throw new Error(
@@ -227,6 +249,7 @@ export default function KnockoutWildcardsPage() {
         const savedWildcards: SavedKnockoutWildcard[] = savedJson.data || [];
 
         setOptionGroups(loadedGroups);
+        setLocksByKey(mapLocksByKey(locksJson?.data || []));
 
         const savedSelections: Partial<Record<KnockoutWildcardRound, string>> =
           {};
@@ -306,6 +329,8 @@ export default function KnockoutWildcardsPage() {
   }, [optionGroups]);
 
   const currentGroup = optionsByRound[currentRound];
+  const currentLock = locksByKey[WILDCARD_LOCK_KEYS[currentRound]];
+  const currentIsOpen = !currentLock || currentLock.is_open;
   const currentOptions = currentGroup.options || [];
   const currentIndex = indexByRound[currentRound] || 0;
   const currentPrediction = currentOptions[currentIndex];
@@ -315,6 +340,7 @@ export default function KnockoutWildcardsPage() {
   ).length;
 
   function previousWildcard() {
+    if (!currentIsOpen) return;
     if (currentOptions.length === 0) return;
 
     setIndexByRound((previous) => ({
@@ -328,6 +354,7 @@ export default function KnockoutWildcardsPage() {
   }
 
   function nextWildcard() {
+    if (!currentIsOpen) return;
     if (currentOptions.length === 0) return;
 
     setIndexByRound((previous) => ({
@@ -341,6 +368,8 @@ export default function KnockoutWildcardsPage() {
   }
 
   function goToWildcardIndex(index: number) {
+    if (!currentIsOpen) return;
+
     setIndexByRound((previous) => ({
       ...previous,
       [currentRound]: index,
@@ -363,6 +392,7 @@ export default function KnockoutWildcardsPage() {
   }
 
 function confirmCurrentWildcard() {
+  if (!currentIsOpen) return;
   if (!currentPrediction) return;
 
   setSelectedTeamByRound((previous) => ({
@@ -377,13 +407,18 @@ function confirmCurrentWildcard() {
         return;
       }
 
+      if (!currentIsOpen) {
+        throw new Error(getLockedButtonLabel(currentLock));
+      }
+
       setSaving(true);
       setError("");
       setSuccess("");
 
-      const wildcards = ROUND_ORDER.filter(
-        (round) => selectedTeamByRound[round]
-      ).map((round) => ({
+      const wildcards = ROUND_ORDER.filter((round) => {
+        const lock = locksByKey[WILDCARD_LOCK_KEYS[round]];
+        return selectedTeamByRound[round] && (!lock || lock.is_open);
+      }).map((round) => ({
         wildcard_round: round,
         team_id: selectedTeamByRound[round],
       }));
@@ -476,6 +511,13 @@ function confirmCurrentWildcard() {
           </p>
         )}
 
+        {!loading && (
+          <PredictionLockBadge
+            lock={currentLock}
+            title={`${currentGroup.round_label} Wildcard Status`}
+          />
+        )}
+
         {!loading &&
           optionGroups.every((group) => group.options.length === 0) && (
             <div className="wc-card p-6 text-center">
@@ -546,6 +588,7 @@ function confirmCurrentWildcard() {
                 >
                   <button
                     onClick={previousWildcard}
+                    disabled={!currentIsOpen}
                     className="absolute left-4 z-40 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
                   >
                     ‹
@@ -553,6 +596,7 @@ function confirmCurrentWildcard() {
 
                   <button
                     onClick={nextWildcard}
+                    disabled={!currentIsOpen}
                     className="absolute right-4 z-40 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
                   >
                     ›
@@ -597,7 +641,7 @@ function confirmCurrentWildcard() {
                               key={prediction.id || prediction.team_id}
                               type="button"
                               onClick={() => goToWildcardIndex(index)}
-                              disabled={Math.abs(offset) > 2}
+                              disabled={Math.abs(offset) > 2 || !currentIsOpen}
                               className={`absolute left-1/2 top-1/2 flex items-center justify-center rounded-full border shadow-2xl transition-all duration-500 ease-out ${
                                 isCurrent
                                   ? "h-40 w-40 border-blue-400/60 bg-blue-500/15 shadow-blue-500/30"
@@ -660,7 +704,8 @@ function confirmCurrentWildcard() {
 
                       <button
                         onClick={confirmCurrentWildcard}
-                        className="wc-button-gold mt-5 px-8 py-3"
+                        disabled={!currentIsOpen}
+                        className="wc-button-gold mt-5 px-8 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {selectedTeamByRound[currentRound] ===
                         currentPrediction.team_id
@@ -705,20 +750,32 @@ function confirmCurrentWildcard() {
                 ) : (
                   <button
                     onClick={saveWildcards}
-                    disabled={saving || selectedCount === 0}
+                    disabled={saving || selectedCount === 0 || !currentIsOpen}
                     className="wc-button px-4 py-4 text-lg disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {saving ? "Saving..." : "Save Wildcards"}
+                    {saving
+                      ? "Saving..."
+                      : !currentIsOpen
+                      ? getLockedButtonLabel(currentLock)
+                      : selectedCount === 0
+                      ? "Choose a prediction first"
+                      : "Save Wildcards"}
                   </button>
                 )}
               </div>
 
               <button
                 onClick={saveWildcards}
-                disabled={saving || selectedCount === 0}
+                disabled={saving || selectedCount === 0 || !currentIsOpen}
                 className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {saving ? "Saving..." : `Save ${selectedCount} Wildcard(s)`}
+                {saving
+                  ? "Saving..."
+                  : !currentIsOpen
+                  ? getLockedButtonLabel(currentLock)
+                  : selectedCount === 0
+                  ? "Choose a prediction first"
+                  : `Save ${selectedCount} Wildcard(s)`}
               </button>
             </div>
           )}

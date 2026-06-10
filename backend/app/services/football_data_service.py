@@ -107,6 +107,28 @@ def get_outcome_from_api_match(match: dict[str, Any]) -> str | None:
     return "DRAW"
 
 
+def get_winner_team_id_from_api_match(
+    match: dict[str, Any],
+    team_a_id: str | None,
+    team_b_id: str | None,
+) -> str | None:
+    status = match.get("status")
+
+    if status != "FINISHED":
+        return None
+
+    score = match.get("score") or {}
+    winner = score.get("winner") or match.get("winner")
+
+    if winner in {"HOME_TEAM", "TEAM_A"}:
+        return team_a_id
+
+    if winner in {"AWAY_TEAM", "TEAM_B"}:
+        return team_b_id
+
+    return None
+
+
 def map_api_stage_to_app_stage(api_stage: str | None) -> str:
     if not api_stage:
         return "UNKNOWN"
@@ -260,6 +282,11 @@ async def sync_world_cup_matches() -> dict[str, Any]:
         api_stage = api_match.get("stage")
         app_stage = map_api_stage_to_app_stage(api_stage)
         actual_outcome = get_outcome_from_api_match(api_match)
+        actual_winner_team_id = get_winner_team_id_from_api_match(
+            api_match,
+            team_a_id,
+            team_b_id,
+        )
 
         group_code = extract_group_code(api_match.get("group"))
         group_id = get_group_id_by_code(group_code) if app_stage == "GROUP" else None
@@ -277,7 +304,10 @@ async def sync_world_cup_matches() -> dict[str, Any]:
             "status": api_match.get("status") or "SCHEDULED",
             "round_name": api_stage,
             "venue": api_match.get("venue"),
-            "actual_outcome": actual_outcome,
+            "actual_outcome": actual_outcome if app_stage == "GROUP" else None,
+            "actual_winner_team_id": (
+                actual_winner_team_id if app_stage != "GROUP" else None
+            ),
         }
 
         if existing_match:

@@ -11,6 +11,11 @@ import {
 } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
+import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import {
+  mapLocksByKey,
+  type LockStatus,
+} from "@/lib/locks";
 import { supabase } from "@/lib/supabase/client";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -43,6 +48,28 @@ type KnockoutMatch = {
   my_prediction?: KnockoutPrediction | null;
 };
 
+const KNOCKOUT_LOCK_KEYS: Record<string, string> = {
+  ROUND_OF_32: "KNOCKOUT_PREDICTIONS_ROUND_OF_32",
+  ROUND_OF_16: "KNOCKOUT_PREDICTIONS_ROUND_OF_16",
+  QUARTER_FINAL: "KNOCKOUT_PREDICTIONS_QUARTER_FINAL",
+  SEMI_FINAL: "KNOCKOUT_PREDICTIONS_SEMI_FINAL",
+  FINAL: "KNOCKOUT_PREDICTIONS_FINAL",
+};
+
+function normalizeRound(value?: string | null) {
+  const text = String(value || "")
+    .toLowerCase()
+    .replace(/[_-]/g, " ");
+
+  if (text.includes("32")) return "ROUND_OF_32";
+  if (text.includes("16")) return "ROUND_OF_16";
+  if (text.includes("quarter")) return "QUARTER_FINAL";
+  if (text.includes("semi")) return "SEMI_FINAL";
+  if (text === "final" || text.includes(" final")) return "FINAL";
+
+  return null;
+}
+
 function getRoundLabel(match: KnockoutMatch) {
   return match.round_name || match.stage || match.round || "Knockout";
 }
@@ -68,15 +95,17 @@ function TeamOption({
   team,
   selected,
   onClick,
+  disabled,
 }: {
   team: Team | null;
   selected: boolean;
   onClick: () => void;
+  disabled: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      disabled={!team}
+      disabled={!team || disabled}
       className={`flex min-h-36 flex-col items-center justify-center rounded-3xl border p-4 text-center transition ${
         selected
           ? "border-yellow-400 bg-yellow-400/15 shadow-lg shadow-yellow-500/10"
@@ -120,6 +149,7 @@ export default function KnockoutsPage() {
 
   const [token, setToken] = useState<string | null>(null);
   const [matches, setMatches] = useState<KnockoutMatch[]>([]);
+  const [locksByKey, setLocksByKey] = useState<Record<string, LockStatus>>({});
   const [selectedWinnerByMatchId, setSelectedWinnerByMatchId] = useState<
     Record<string, string>
   >({});
@@ -147,14 +177,23 @@ export default function KnockoutsPage() {
 
         setToken(session.access_token);
 
-        const response = await fetch(`${API_BASE_URL}/knockout-predictions/matches`, {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          cache: "no-store",
-        });
+        const [response, locksResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/knockout-predictions/matches`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE_URL}/locks/status`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
+        ]);
 
         const json = await response.json().catch(() => null);
+        const locksJson = await locksResponse.json().catch(() => null);
 
         if (!response.ok) {
           throw new Error(json?.detail || "Failed to load knockout matches");
@@ -162,6 +201,7 @@ export default function KnockoutsPage() {
 
         const loadedMatches: KnockoutMatch[] = json.data || [];
         setMatches(loadedMatches);
+        setLocksByKey(mapLocksByKey(locksJson?.data || []));
 
         const savedSelections: Record<string, string> = {};
 
@@ -203,6 +243,20 @@ export default function KnockoutsPage() {
     (match) => selectedWinnerByMatchId[match.id]
   ).length;
 
+  function getMatchLock(match: KnockoutMatch) {
+    const round = normalizeRound(getRoundLabel(match));
+    return round ? locksByKey[KNOCKOUT_LOCK_KEYS[round]] : null;
+  }
+
+  function isMatchOpen(match: KnockoutMatch) {
+    const lock = getMatchLock(match);
+    return !lock || lock.is_open;
+  }
+
+  const editableSelectedCount = matches.filter(
+    (match) => isMatchOpen(match) && selectedWinnerByMatchId[match.id]
+  ).length;
+
   function selectWinner(matchId: string, teamId: string) {
     setSelectedWinnerByMatchId((previous) => ({
       ...previous,
@@ -222,14 +276,14 @@ export default function KnockoutsPage() {
       setSuccess("");
 
       const predictions = matches
-        .filter((match) => selectedWinnerByMatchId[match.id])
+        .filter((match) => isMatchOpen(match) && selectedWinnerByMatchId[match.id])
         .map((match) => ({
           match_id: match.id,
           predicted_winner_team_id: selectedWinnerByMatchId[match.id],
         }));
 
       if (predictions.length === 0) {
-        throw new Error("Select at least one knockout winner.");
+        throw new Error("Choose a prediction first.");
       }
 
       const response = await fetch(`${API_BASE_URL}/knockout-predictions`, {
@@ -285,13 +339,13 @@ export default function KnockoutsPage() {
 
             <button
               onClick={savePredictions}
-              disabled={saving || selectedCount === 0}
+              disabled={saving || editableSelectedCount === 0}
               className="wc-button min-w-24 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? (
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               ) : (
-                "Save"
+                editableSelectedCount === 0 ? "Choose a prediction first" : "Save"
               )}
             </button>
           </div>
@@ -334,6 +388,12 @@ export default function KnockoutsPage() {
           <div className="space-y-6">
             {Object.entries(matchesByRound).map(([round, roundMatches]) => (
               <section key={round} className="wc-card">
+                <PredictionLockBadge
+                  lock={getMatchLock(roundMatches[0])}
+                  title={`${round} Status`}
+                  compact
+                />
+
                 <div className="mb-4 flex items-center gap-2">
                   <Shield className="h-5 w-5 text-yellow-300" />
                   <h2 className="text-xl font-black text-white">{round}</h2>
@@ -342,6 +402,8 @@ export default function KnockoutsPage() {
                 <div className="space-y-4">
                   {roundMatches.map((match) => {
                     const selectedWinner = selectedWinnerByMatchId[match.id];
+                    const matchLock = getMatchLock(match);
+                    const matchOpen = !matchLock || matchLock.is_open;
 
                     return (
                       <div
@@ -365,6 +427,7 @@ export default function KnockoutsPage() {
                           <TeamOption
                             team={match.team_a}
                             selected={selectedWinner === match.team_a_id}
+                            disabled={!matchOpen}
                             onClick={() =>
                               selectWinner(match.id, match.team_a_id)
                             }
@@ -377,6 +440,7 @@ export default function KnockoutsPage() {
                           <TeamOption
                             team={match.team_b}
                             selected={selectedWinner === match.team_b_id}
+                            disabled={!matchOpen}
                             onClick={() =>
                               selectWinner(match.id, match.team_b_id)
                             }

@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { BottomNav } from "@/components/bottomnav";
+import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import {
+  getLockedButtonLabel,
+  mapLocksByKey,
+  type LockStatus,
+} from "@/lib/locks";
 import { supabase } from "@/lib/supabase/client";
 
 import {
@@ -66,7 +73,16 @@ function PositionBox({ position }: { position: number }) {
   );
 }
 
-function SortableTeamCard({ team }: { team: Team }) {
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+
+function SortableTeamCard({
+  team,
+  disabled,
+}: {
+  team: Team;
+  disabled: boolean;
+}) {
   const {
     attributes,
     listeners,
@@ -76,6 +92,7 @@ function SortableTeamCard({ team }: { team: Team }) {
     isDragging,
   } = useSortable({
     id: team.id,
+    disabled,
   });
 
   const style = {
@@ -90,6 +107,9 @@ function SortableTeamCard({ team }: { team: Team }) {
       {...attributes}
       {...listeners}
       className={`flex flex-1 touch-none items-center justify-between rounded-2xl border p-3 transition ${
+        disabled
+          ? "border-white/10 bg-black/20 opacity-75"
+          :
         isDragging
           ? "z-50 scale-[1.03] border-yellow-400 bg-yellow-400/10 shadow-2xl"
           : "border-white/10 bg-black/25"
@@ -118,8 +138,11 @@ function SortableTeamCard({ team }: { team: Team }) {
 }
 
 export default function GroupsPage() {
+  const router = useRouter();
   const [groups, setGroups] = useState<Group[]>([]);
   const [predictions, setPredictions] = useState<Record<string, Team[]>>({});
+  const [token, setToken] = useState<string | null>(null);
+  const [lock, setLock] = useState<LockStatus | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -144,17 +167,36 @@ export default function GroupsPage() {
   useEffect(() => {
     async function loadGroups() {
       try {
-        const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        const response = await fetch(`${apiBaseUrl}/groups/with-teams`);
+        if (!session) {
+          router.push("/login");
+          return;
+        }
+
+        setToken(session.access_token);
+
+        const [response, locksResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/groups/with-teams`, { cache: "no-store" }),
+          fetch(`${API_BASE_URL}/locks/status`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
+        ]);
 
         if (!response.ok) {
           throw new Error("Failed to load groups");
         }
 
         const result: GroupsResponse = await response.json();
+        const locksJson = await locksResponse.json().catch(() => null);
 
         setGroups(result.data);
+        setLock(mapLocksByKey(locksJson?.data || []).GROUP_STANDINGS || null);
 
         const initialPredictions: Record<string, Team[]> = {};
 
@@ -171,12 +213,14 @@ export default function GroupsPage() {
     }
 
     loadGroups();
-  }, []);
+  }, [router]);
+
+  const isOpen = !lock || lock.is_open;
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
 
-    if (!over || active.id === over.id) {
+    if (!isOpen || !over || active.id === over.id) {
       return;
     }
 
@@ -214,12 +258,13 @@ export default function GroupsPage() {
     setSuccessMessage("");
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      if (!token) {
+        router.push("/login");
+        return;
+      }
 
-      if (!session) {
-        throw new Error("You must be logged in");
+      if (!isOpen) {
+        throw new Error(getLockedButtonLabel(lock));
       }
 
       const allPredictions = Object.entries(predictions).flatMap(
@@ -231,13 +276,11 @@ export default function GroupsPage() {
           }))
       );
 
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-
-      const response = await fetch(`${apiBaseUrl}/group-predictions/`, {
+      const response = await fetch(`${API_BASE_URL}/group-predictions/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           predictions: allPredictions,
@@ -292,6 +335,8 @@ export default function GroupsPage() {
           </p>
         )}
 
+        {!loading && <PredictionLockBadge lock={lock} title="Group Standings" />}
+
         {!loading && !error && (
           <DndContext
             sensors={sensors}
@@ -337,7 +382,7 @@ export default function GroupsPage() {
                         {groupTeams.map((team, index) => (
   <div key={team.id} className="flex items-stretch gap-3">
     <PositionBox position={index + 1} />
-    <SortableTeamCard team={team} />
+    <SortableTeamCard team={team} disabled={!isOpen} />
   </div>
 ))}
                       </div>
@@ -352,10 +397,14 @@ export default function GroupsPage() {
         {!loading && !error && (
           <button
             onClick={savePredictions}
-            disabled={saving}
+            disabled={saving || !isOpen}
             className="wc-button mt-6 w-full px-4 py-4 text-lg disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? "Saving..." : "Save Group Predictions"}
+            {saving
+              ? "Saving..."
+              : !isOpen
+              ? getLockedButtonLabel(lock)
+              : "Save Group Predictions"}
           </button>
         )}
       </section>

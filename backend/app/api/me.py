@@ -78,20 +78,10 @@ def get_current_user_profile(authorization: str | None = Header(default=None)):
                 "team": team_result.data[0],
             }
 
-    score_result = (
-        supabase
-        .table("score_logs")
-        .select("points")
-        .eq("user_id", user_id)
-        .execute()
-    )
-
-    total_points = sum(item["points"] for item in score_result.data)
-
     return {
         "onboarding_completed": True,
         "profile": profile,
         "avatar": avatar,
         "champion": champion,
-        "total_points": total_points,
+        "total_points": int(profile.get("total_points") or 0),
     }

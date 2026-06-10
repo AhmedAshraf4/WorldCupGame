@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import {
+  getLockedButtonLabel,
+  mapLocksByKey,
+  type LockStatus,
+} from "@/lib/locks";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -40,6 +46,7 @@ export default function OnboardingPage() {
   const [displayName, setDisplayName] = useState("");
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [championLock, setChampionLock] = useState<LockStatus | null>(null);
 
   const [avatarIndex, setAvatarIndex] = useState(0);
   const [championIndex, setChampionIndex] = useState(0);
@@ -114,11 +121,17 @@ export default function OnboardingPage() {
           return;
         }
 
-        const [avatarsResponse, teamsResponse] = await Promise.all([
+        const [avatarsResponse, teamsResponse, locksResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/avatars`, {
             cache: "no-store",
           }),
           fetch(`${API_BASE_URL}/teams`, {
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE_URL}/locks/status`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
             cache: "no-store",
           }),
         ]);
@@ -129,9 +142,11 @@ export default function OnboardingPage() {
 
         const avatarsResult: ApiResponse<Avatar> = await avatarsResponse.json();
         const teamsResult: ApiResponse<Team> = await teamsResponse.json();
+        const locksJson = await locksResponse.json().catch(() => null);
 
         setAvatars(avatarsResult.data || []);
         setTeams(teamsResult.data || []);
+        setChampionLock(mapLocksByKey(locksJson?.data || []).CHAMPION_PICK || null);
       } catch {
         setError("Could not load onboarding data. Make sure FastAPI is running.");
       } finally {
@@ -163,6 +178,7 @@ export default function OnboardingPage() {
   }
 
   function previousChampion() {
+    if (championLock && !championLock.is_open) return;
     if (teams.length === 0) return;
 
     setChampionDirection("left");
@@ -173,6 +189,7 @@ export default function OnboardingPage() {
   }
 
   function nextChampion() {
+    if (championLock && !championLock.is_open) return;
     if (teams.length === 0) return;
 
     setChampionDirection("right");
@@ -217,6 +234,10 @@ export default function OnboardingPage() {
         return;
       }
 
+      if (championLock && !championLock.is_open) {
+        throw new Error(getLockedButtonLabel(championLock));
+      }
+
       const response = await fetch(`${API_BASE_URL}/onboarding`, {
         method: "POST",
         headers: {
@@ -246,7 +267,11 @@ export default function OnboardingPage() {
 
   const canGoToChampion = displayName.trim() && selectedAvatarId;
   const canFinish =
-    displayName.trim() && selectedAvatarId && selectedChampionId && !saving;
+    displayName.trim() &&
+    selectedAvatarId &&
+    selectedChampionId &&
+    !saving &&
+    (!championLock || championLock.is_open);
 
   return (
     <main className="wc-page min-h-screen p-4 text-white md:p-6">
@@ -405,6 +430,8 @@ export default function OnboardingPage() {
 
         {!loading && step === "champion" && (
           <div className="wc-card p-5">
+            <PredictionLockBadge lock={championLock} title="Champion Pick" />
+
             <div className="mb-5 rounded-2xl border border-yellow-400/30 bg-yellow-400/10 p-4">
               <h2 className="mb-1 text-lg font-black text-yellow-300">
                 Champion Pick Reward
@@ -425,14 +452,16 @@ export default function OnboardingPage() {
             >
               <button
                 onClick={previousChampion}
-                className="absolute left-4 z-20 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
+                disabled={Boolean(championLock && !championLock.is_open)}
+                className="absolute left-4 z-20 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ‹
               </button>
 
               <button
                 onClick={nextChampion}
-                className="absolute right-4 z-20 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
+                disabled={Boolean(championLock && !championLock.is_open)}
+                className="absolute right-4 z-20 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ›
               </button>
@@ -517,7 +546,8 @@ export default function OnboardingPage() {
 
                   <button
                     onClick={() => setSelectedChampionId(currentChampion.id)}
-                    className="wc-button-gold mt-5 px-8 py-3"
+                    disabled={Boolean(championLock && !championLock.is_open)}
+                    className="wc-button-gold mt-5 px-8 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {selectedChampionId === currentChampion.id
                       ? "Champion Confirmed"
@@ -540,7 +570,13 @@ export default function OnboardingPage() {
                 disabled={!canFinish}
                 className="wc-button px-4 py-4 text-lg disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving ? "Saving..." : "Enter Tournament"}
+                {saving
+                  ? "Saving..."
+                  : championLock && !championLock.is_open
+                  ? getLockedButtonLabel(championLock)
+                  : !selectedChampionId
+                  ? "Choose a prediction first"
+                  : "Enter Tournament"}
               </button>
             </div>
           </div>

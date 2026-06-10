@@ -14,6 +14,7 @@ import {
 
 import { BottomNav } from "@/components/bottomnav";
 import { supabase } from "@/lib/supabase/client";
+import { useAdminGuard } from "@/lib/useAdminGuard";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -154,6 +155,7 @@ function TeamBadge({ team }: { team?: Team | null }) {
 
 export default function AdminResultsPage() {
   const router = useRouter();
+  const { checkingAdmin } = useAdminGuard();
 
   const [token, setToken] = useState<string | null>(null);
 
@@ -315,8 +317,10 @@ export default function AdminResultsPage() {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (checkingAdmin) return;
+
+    void Promise.resolve().then(loadData);
+  }, [checkingAdmin]);
 
   const knockoutMatchesByRound = useMemo(() => {
     const grouped: Record<string, KnockoutMatch[]> = {};
@@ -536,6 +540,17 @@ export default function AdminResultsPage() {
     } finally {
       setSavingKey(null);
     }
+  }
+
+  if (checkingAdmin) {
+    return (
+      <main className="wc-page flex min-h-screen items-center justify-center p-6 text-white">
+        <div className="wc-card flex items-center gap-3 p-6">
+          <Loader2 className="h-5 w-5 animate-spin text-blue-300" />
+          <p className="wc-muted font-bold">Checking admin access...</p>
+        </div>
+      </main>
+    );
   }
 
   return (

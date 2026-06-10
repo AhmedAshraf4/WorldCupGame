@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Star, Trophy } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
+import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import {
+  getLockedButtonLabel,
+  mapLocksByKey,
+  type LockStatus,
+} from "@/lib/locks";
 import { supabase } from "@/lib/supabase/client";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -86,6 +92,7 @@ export default function GroupWildcardsPage() {
   const router = useRouter();
 
   const [token, setToken] = useState<string | null>(null);
+  const [lock, setLock] = useState<LockStatus | null>(null);
 
   const [predictions, setPredictions] = useState<GroupPrediction[]>([]);
   const [currentPosition, setCurrentPosition] = useState(1);
@@ -137,7 +144,7 @@ export default function GroupWildcardsPage() {
 
         setToken(session.access_token);
 
-        const [predictionsResponse, wildcardsResponse] = await Promise.all([
+        const [predictionsResponse, wildcardsResponse, locksResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/group-predictions/with-teams`, {
             headers: {
               Authorization: `Bearer ${session.access_token}`,
@@ -150,6 +157,12 @@ export default function GroupWildcardsPage() {
             },
             cache: "no-store",
           }),
+          fetch(`${API_BASE_URL}/locks/status`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
         ]);
 
         const predictionsJson = await predictionsResponse
@@ -157,6 +170,7 @@ export default function GroupWildcardsPage() {
           .catch(() => null);
 
         const wildcardsJson = await wildcardsResponse.json().catch(() => null);
+        const locksJson = await locksResponse.json().catch(() => null);
 
         if (!predictionsResponse.ok) {
           throw new Error(
@@ -174,6 +188,7 @@ export default function GroupWildcardsPage() {
         const loadedWildcards: SavedWildcard[] = wildcardsJson.data || [];
 
         setPredictions(loadedPredictions);
+        setLock(mapLocksByKey(locksJson?.data || []).GROUP_WILDCARDS || null);
 
         const savedSelections: Record<number, string> = {};
 
@@ -255,6 +270,7 @@ export default function GroupWildcardsPage() {
   }, [predictions]);
 
   const currentOptions = predictionsByPosition[currentPosition] || [];
+  const isOpen = !lock || lock.is_open;
   const currentIndex = indexByPosition[currentPosition] || 0;
   const currentDirection = directionByPosition[currentPosition] || "right";
 
@@ -279,6 +295,7 @@ export default function GroupWildcardsPage() {
   ).length;
 
   function previousWildcard() {
+    if (!isOpen) return;
     if (currentOptions.length === 0) return;
 
     setDirectionByPosition((previous) => ({
@@ -297,6 +314,7 @@ export default function GroupWildcardsPage() {
   }
 
   function nextWildcard() {
+    if (!isOpen) return;
     if (currentOptions.length === 0) return;
 
     setDirectionByPosition((previous) => ({
@@ -330,6 +348,7 @@ export default function GroupWildcardsPage() {
   }
 
   function confirmCurrentWildcard() {
+    if (!isOpen) return;
     if (!currentPrediction) return;
 
     setSelectedTeamByPosition((previous) => ({
@@ -347,6 +366,10 @@ export default function GroupWildcardsPage() {
       if (!token) {
         router.push("/login");
         return;
+      }
+
+      if (!isOpen) {
+        throw new Error(getLockedButtonLabel(lock));
       }
 
       setSaving(true);
@@ -442,6 +465,8 @@ export default function GroupWildcardsPage() {
           </p>
         )}
 
+        {!loading && <PredictionLockBadge lock={lock} title="Group Wildcards" />}
+
         {!loading && predictions.length < 48 && (
           <div className="wc-card p-6 text-center">
             <Trophy className="mx-auto mb-3 h-10 w-10 text-slate-500" />
@@ -476,13 +501,14 @@ export default function GroupWildcardsPage() {
 
             <div
               className="relative flex min-h-[500px] items-center justify-center overflow-hidden rounded-3xl border border-white/10 bg-black/25 p-5"
-              onTouchStart={(event) => setTouchStartX(event.touches[0].clientX)}
-              onTouchEnd={(event) =>
-                handleSwipeEnd(event.changedTouches[0].clientX)
+                onTouchStart={(event) => setTouchStartX(event.touches[0].clientX)}
+                onTouchEnd={(event) =>
+                  handleSwipeEnd(event.changedTouches[0].clientX)
               }
             >
               <button
                 onClick={previousWildcard}
+                disabled={!isOpen}
                 className="absolute left-4 z-20 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
               >
                 ‹
@@ -490,6 +516,7 @@ export default function GroupWildcardsPage() {
 
               <button
                 onClick={nextWildcard}
+                disabled={!isOpen}
                 className="absolute right-4 z-20 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
               >
                 ›
@@ -609,7 +636,8 @@ export default function GroupWildcardsPage() {
 
                   <button
                     onClick={confirmCurrentWildcard}
-                    className="wc-button-gold mt-5 px-8 py-3"
+                    disabled={!isOpen}
+                    className="wc-button-gold mt-5 px-8 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {selectedTeamByPosition[currentPosition] ===
                     currentPrediction.team_id
@@ -643,10 +671,16 @@ export default function GroupWildcardsPage() {
               ) : (
                 <button
                   onClick={saveWildcards}
-                  disabled={saving || selectedCount !== 4}
+                  disabled={saving || selectedCount !== 4 || !isOpen}
                   className="wc-button px-4 py-4 text-lg disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {saving ? "Saving..." : "Save Wildcards"}
+                  {saving
+                    ? "Saving..."
+                    : !isOpen
+                    ? getLockedButtonLabel(lock)
+                    : selectedCount !== 4
+                    ? "Complete all required picks"
+                    : "Save Wildcards"}
                 </button>
               )}
             </div>

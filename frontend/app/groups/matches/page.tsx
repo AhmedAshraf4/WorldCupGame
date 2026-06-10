@@ -14,6 +14,8 @@ import {
 
 import { supabase } from "@/lib/supabase/client";
 import { BottomNav } from "@/components/bottomnav";
+import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import { getLockedButtonLabel, mapLocksByKey } from "@/lib/locks";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -265,11 +267,7 @@ export default function GroupMatchesPage() {
           saved[prediction.match_id] = prediction.predicted_outcome;
         });
 
-        const nextLocksByKey: Record<string, LockStatus> = {};
-
-        (locksJson.data || []).forEach((lock: LockStatus) => {
-          nextLocksByKey[lock.lock_key] = lock;
-        });
+        const nextLocksByKey = mapLocksByKey(locksJson.data || []);
 
         setMatches(matchesJson.data || []);
         setSelectedOutcomes(saved);
@@ -433,6 +431,11 @@ export default function GroupMatchesPage() {
           })}
         </div>
 
+        <PredictionLockBadge
+          lock={activeLock}
+          title={`Matchday ${activeMatchday} Status`}
+        />
+
         <div className="wc-card mb-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -459,7 +462,11 @@ export default function GroupMatchesPage() {
               {saving ? (
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               ) : (
-                "Save"
+                !activeIsOpen
+                  ? getLockedButtonLabel(activeLock)
+                  : activeSelectedCount === 0
+                  ? "Choose a prediction first"
+                  : "Save"
               )}
             </button>
           </div>
