@@ -16,6 +16,10 @@ import { supabase } from "@/lib/supabase/client";
 import { BottomNav } from "@/components/bottomnav";
 import { PredictionLockBadge } from "@/components/PredictionLockBadge";
 import { getLockedButtonLabel, mapLocksByKey } from "@/lib/locks";
+import {
+  formatTeamRank,
+  getMeaningfulUnderdogTeamId,
+} from "@/lib/underdog";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -25,6 +29,7 @@ type Team = {
   name: string;
   flag_url?: string | null;
   fifa_rank?: number | null;
+  fifa_points?: number | null;
 };
 
 type Group = {
@@ -148,20 +153,42 @@ function getLockBadge(lock?: LockStatus) {
   };
 }
 
-function TeamLabel({ team }: { team: Team }) {
+function TeamLabel({
+  team,
+  isUnderdog = false,
+}: {
+  team: Team;
+  isUnderdog?: boolean;
+}) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 items-center gap-3">
       {team.flag_url ? (
         <img
           src={team.flag_url}
           alt={team.name}
-          className="h-7 w-7 rounded-full object-cover"
+          className="h-9 w-9 shrink-0 rounded-full object-cover"
         />
       ) : (
-        <div className="h-7 w-7 rounded-full bg-white/10" />
+        <div className="h-9 w-9 shrink-0 rounded-full bg-white/10" />
       )}
 
-      <span className="truncate text-sm font-bold text-white">{team.name}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-bold text-white">
+            {team.name}
+          </span>
+
+          {isUnderdog && (
+            <span className="rounded-full border border-yellow-300/40 bg-yellow-400/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-yellow-100">
+              Underdog
+            </span>
+          )}
+        </div>
+
+        <p className="mt-0.5 text-xs font-bold text-slate-400">
+          {formatTeamRank(team)}
+        </p>
+      </div>
     </div>
   );
 }
@@ -514,6 +541,10 @@ export default function GroupMatchesPage() {
 
                 {groupMatches.map((match) => {
                   const selected = selectedOutcomes[match.id];
+                  const underdogTeamId = getMeaningfulUnderdogTeamId(
+                    match.team_a,
+                    match.team_b
+                  );
 
                   return (
                     <div key={match.id} className="wc-card space-y-4">
@@ -530,7 +561,10 @@ export default function GroupMatchesPage() {
 
                       <div className="space-y-3">
                         <div className="rounded-2xl bg-white/5 p-3">
-                          <TeamLabel team={match.team_a} />
+                          <TeamLabel
+                            team={match.team_a}
+                            isUnderdog={underdogTeamId === match.team_a.id}
+                          />
                         </div>
 
                         <div className="text-center text-xs font-black uppercase tracking-[0.3em] text-slate-500">
@@ -538,9 +572,18 @@ export default function GroupMatchesPage() {
                         </div>
 
                         <div className="rounded-2xl bg-white/5 p-3">
-                          <TeamLabel team={match.team_b} />
+                          <TeamLabel
+                            team={match.team_b}
+                            isUnderdog={underdogTeamId === match.team_b.id}
+                          />
                         </div>
                       </div>
+
+                      {underdogTeamId && (
+                        <div className="rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
+                          Underdog win pick scores +2 if correct, -2 if wrong.
+                        </div>
+                      )}
 
                       {!activeIsOpen && (
                         <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-200">

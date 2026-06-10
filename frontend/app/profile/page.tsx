@@ -1,4 +1,5 @@
 import { BottomNav } from "@/components/bottomnav";
+import Link from "next/link";
 
 export default function ProfilePage() {
   return (
@@ -16,6 +17,19 @@ export default function ProfilePage() {
             Soon this page will show avatar, champion pick, prediction history, and logout.
           </p>
         </div>
+
+        <Link
+          href="/rules"
+          className="wc-card mt-4 block p-5 transition hover:scale-[1.01]"
+        >
+          <p className="wc-gold mb-2 text-xs font-black uppercase tracking-[0.2em]">
+            Road to 26
+          </p>
+          <h2 className="text-2xl font-black">Scoring Rules</h2>
+          <p className="wc-muted mt-2">
+            Review match, wildcard, champion, and underdog scoring.
+          </p>
+        </Link>
       </section>
 
       <BottomNav />

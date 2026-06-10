@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import { ScoringRules } from "@/components/ScoringRules";
 import {
   getLockedButtonLabel,
   mapLocksByKey,
@@ -37,11 +38,12 @@ type ApiResponse<T> = {
 };
 
 type Direction = "left" | "right";
+type OnboardingStep = "avatar" | "champion" | "rules";
 
 export default function OnboardingPage() {
   const router = useRouter();
 
-  const [step, setStep] = useState<"avatar" | "champion">("avatar");
+  const [step, setStep] = useState<OnboardingStep>("avatar");
 
   const [displayName, setDisplayName] = useState("");
   const [avatars, setAvatars] = useState<Avatar[]>([]);
@@ -274,6 +276,20 @@ export default function OnboardingPage() {
     !saving &&
     (!championLock || championLock.is_open);
 
+  const stepTitle =
+    step === "avatar"
+      ? "Choose Your Avatar"
+      : step === "champion"
+      ? "Choose Your Champion"
+      : "Scoring Rules";
+
+  const stepSubtitle =
+    step === "avatar"
+      ? "Swipe through avatars and confirm your identity."
+      : step === "champion"
+      ? "If your chosen team wins the World Cup, you win 50 points. Choose wisely."
+      : "Review how points are earned before you enter the tournament.";
+
   return (
     <main className="wc-page min-h-screen p-4 text-white md:p-6">
       <section className="mx-auto max-w-5xl">
@@ -317,14 +333,10 @@ export default function OnboardingPage() {
           </p>
 
           <h1 className="text-3xl font-black md:text-5xl">
-            {step === "avatar" ? "Choose Your Avatar" : "Choose Your Champion"}
+            {stepTitle}
           </h1>
 
-          <p className="wc-muted mt-2">
-            {step === "avatar"
-              ? "Swipe through avatars and confirm your identity."
-              : "If your chosen team wins the World Cup, you win 50 points. Choose wisely."}
-          </p>
+          <p className="wc-muted mt-2">{stepSubtitle}</p>
         </div>
 
         <div className="mb-6 flex items-center justify-center gap-3">
@@ -336,6 +348,11 @@ export default function OnboardingPage() {
           <div
             className={`h-2 w-16 rounded-full ${
               step === "champion" ? "bg-yellow-400" : "bg-white/20"
+            }`}
+          />
+          <div
+            className={`h-2 w-16 rounded-full ${
+              step === "rules" ? "bg-green-400" : "bg-white/20"
             }`}
           />
         </div>
@@ -601,18 +618,46 @@ export default function OnboardingPage() {
               </button>
 
               <button
-                onClick={handleContinue}
+                onClick={() => setStep("rules")}
                 disabled={!canFinish}
                 className="wc-button px-4 py-4 text-lg disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {saving
-                  ? "Saving..."
-                  : championLock && !championLock.is_open
+                {championLock && !championLock.is_open
                   ? getLockedButtonLabel(championLock)
                   : !selectedChampionId
                   ? "Choose a prediction first"
-                  : "Enter Tournament"}
+                  : "Review Rules"}
               </button>
+            </div>
+          </div>
+        )}
+
+        {!loading && step === "rules" && (
+          <div className="space-y-5">
+            <ScoringRules compact />
+
+            <div className="wc-card p-5">
+              <p className="wc-muted text-sm font-semibold">
+                By entering the tournament, your avatar and champion pick will
+                be saved. Your champion pick cannot be changed later.
+              </p>
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setStep("champion")}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 font-bold text-white hover:bg-white/10"
+                >
+                  Back
+                </button>
+
+                <button
+                  onClick={handleContinue}
+                  disabled={!canFinish}
+                  className="wc-button px-4 py-4 text-lg disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saving ? "Saving..." : "Enter Tournament"}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -17,6 +17,10 @@ import {
   type LockStatus,
 } from "@/lib/locks";
 import { supabase } from "@/lib/supabase/client";
+import {
+  formatTeamRank,
+  getMeaningfulUnderdogTeamId,
+} from "@/lib/underdog";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
@@ -25,6 +29,7 @@ type Team = {
   name: string;
   flag_url?: string | null;
   fifa_rank?: number | null;
+  fifa_points?: number | null;
 };
 
 type KnockoutPrediction = {
@@ -94,11 +99,13 @@ function formatMatchDate(value?: string | null) {
 function TeamOption({
   team,
   selected,
+  isUnderdog = false,
   onClick,
   disabled,
 }: {
   team: Team | null;
   selected: boolean;
+  isUnderdog?: boolean;
   onClick: () => void;
   disabled: boolean;
 }) {
@@ -128,10 +135,14 @@ function TeamOption({
         {team?.name || "TBD"}
       </p>
 
-      {team?.fifa_rank && (
-        <p className="mt-1 text-xs font-bold text-slate-500">
-          Rank #{team.fifa_rank}
-        </p>
+      <p className="mt-1 text-xs font-bold text-slate-500">
+        {formatTeamRank(team)}
+      </p>
+
+      {isUnderdog && (
+        <div className="mt-3 rounded-full border border-yellow-300/40 bg-yellow-400/15 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-yellow-100">
+          Underdog
+        </div>
       )}
 
       {selected && (
@@ -404,6 +415,10 @@ export default function KnockoutsPage() {
                     const selectedWinner = selectedWinnerByMatchId[match.id];
                     const matchLock = getMatchLock(match);
                     const matchOpen = !matchLock || matchLock.is_open;
+                    const underdogTeamId = getMeaningfulUnderdogTeamId(
+                      match.team_a,
+                      match.team_b
+                    );
 
                     return (
                       <div
@@ -427,6 +442,7 @@ export default function KnockoutsPage() {
                           <TeamOption
                             team={match.team_a}
                             selected={selectedWinner === match.team_a_id}
+                            isUnderdog={underdogTeamId === match.team_a_id}
                             disabled={!matchOpen}
                             onClick={() =>
                               selectWinner(match.id, match.team_a_id)
@@ -440,12 +456,20 @@ export default function KnockoutsPage() {
                           <TeamOption
                             team={match.team_b}
                             selected={selectedWinner === match.team_b_id}
+                            isUnderdog={underdogTeamId === match.team_b_id}
                             disabled={!matchOpen}
                             onClick={() =>
                               selectWinner(match.id, match.team_b_id)
                             }
                           />
                         </div>
+
+                        {underdogTeamId && (
+                          <div className="mt-3 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
+                            Underdog winner pick scores round points x2 if
+                            correct, x-2 if wrong.
+                          </div>
+                        )}
                       </div>
                     );
                   })}

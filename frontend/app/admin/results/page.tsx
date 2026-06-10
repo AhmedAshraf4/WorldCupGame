@@ -14,6 +14,10 @@ import {
 
 import { BottomNav } from "@/components/bottomnav";
 import { supabase } from "@/lib/supabase/client";
+import {
+  formatTeamRank,
+  getMeaningfulUnderdogTeamId,
+} from "@/lib/underdog";
 import { useAdminGuard } from "@/lib/useAdminGuard";
 
 const API_BASE_URL =
@@ -23,6 +27,8 @@ type Team = {
   id: string;
   name: string;
   flag_url?: string | null;
+  fifa_rank?: number | null;
+  fifa_points?: number | null;
 };
 
 type Group = {
@@ -131,7 +137,13 @@ function getGroupTitle(group?: Group | null) {
   return group.name || (group.code ? `Group ${group.code}` : "Group");
 }
 
-function TeamBadge({ team }: { team?: Team | null }) {
+function TeamBadge({
+  team,
+  isUnderdog = false,
+}: {
+  team?: Team | null;
+  isUnderdog?: boolean;
+}) {
   if (!team) return null;
 
   return (
@@ -148,7 +160,21 @@ function TeamBadge({ team }: { team?: Team | null }) {
         </div>
       )}
 
-      <p className="font-black">{team.name}</p>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-black">{team.name}</p>
+
+          {isUnderdog && (
+            <span className="rounded-full border border-yellow-300/40 bg-yellow-400/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-yellow-100">
+              Underdog
+            </span>
+          )}
+        </div>
+
+        <p className="mt-0.5 text-xs font-bold text-slate-400">
+          {formatTeamRank(team)}
+        </p>
+      </div>
     </div>
   );
 }
@@ -646,6 +672,10 @@ export default function AdminResultsPage() {
                   {matches.map((match) => {
                     const selectedOutcome = outcomeByGroupMatch[match.id];
                     const isSaving = savingKey === `group-match:${match.id}`;
+                    const underdogTeamId = getMeaningfulUnderdogTeamId(
+                      match.team_a,
+                      match.team_b
+                    );
 
                     return (
                       <div
@@ -673,13 +703,25 @@ export default function AdminResultsPage() {
 
                         <div className="mb-4 grid gap-3 md:grid-cols-2">
                           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                            <TeamBadge team={match.team_a} />
+                            <TeamBadge
+                              team={match.team_a}
+                              isUnderdog={underdogTeamId === match.team_a_id}
+                            />
                           </div>
 
                           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                            <TeamBadge team={match.team_b} />
+                            <TeamBadge
+                              team={match.team_b}
+                              isUnderdog={underdogTeamId === match.team_b_id}
+                            />
                           </div>
                         </div>
+
+                        {underdogTeamId && (
+                          <div className="mb-4 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
+                            This matchup has a meaningful underdog.
+                          </div>
+                        )}
 
                         <div className="grid gap-2 md:grid-cols-3">
                           {(["TEAM_A_WIN", "DRAW", "TEAM_B_WIN"] as Outcome[]).map(
@@ -753,6 +795,10 @@ export default function AdminResultsPage() {
                     {matches.map((match) => {
                       const selectedWinner = winnerByMatch[match.id];
                       const isSaving = savingKey === `match:${match.id}`;
+                      const underdogTeamId = getMeaningfulUnderdogTeamId(
+                        match.team_a,
+                        match.team_b
+                      );
 
                       return (
                         <div
@@ -797,11 +843,20 @@ export default function AdminResultsPage() {
                                       : "border-white/10 bg-white/5 hover:bg-white/10"
                                   }`}
                                 >
-                                  <TeamBadge team={team} />
+                                  <TeamBadge
+                                    team={team}
+                                    isUnderdog={underdogTeamId === team.id}
+                                  />
                                 </button>
                               );
                             })}
                           </div>
+
+                          {underdogTeamId && (
+                            <div className="mt-3 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
+                              This matchup has a meaningful underdog.
+                            </div>
+                          )}
 
                           <button
                             onClick={() => saveMatchWinner(match)}
