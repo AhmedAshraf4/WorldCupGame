@@ -31,11 +31,91 @@ SCORE_SOURCE_TYPES = [
 ]
 
 
+def to_int_or_none(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def to_float_or_none(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_underdog_team_id(
+    match: dict[str, Any],
+    teams_by_id: dict[str, dict[str, Any]],
+) -> str | None:
+    team_a_id = match.get("team_a_id")
+    team_b_id = match.get("team_b_id")
+
+    if not team_a_id or not team_b_id:
+        return None
+
+    team_a = teams_by_id.get(team_a_id)
+    team_b = teams_by_id.get(team_b_id)
+
+    if not team_a or not team_b:
+        return None
+
+    team_a_rank = to_int_or_none(team_a.get("fifa_rank"))
+    team_b_rank = to_int_or_none(team_b.get("fifa_rank"))
+
+    if team_a_rank is not None and team_b_rank is not None:
+        if abs(team_a_rank - team_b_rank) > 3:
+            return team_a_id if team_a_rank > team_b_rank else team_b_id
+
+    team_a_points = to_float_or_none(team_a.get("fifa_points"))
+    team_b_points = to_float_or_none(team_b.get("fifa_points"))
+
+    if team_a_points is not None and team_b_points is not None:
+        if abs(team_a_points - team_b_points) >= 10:
+            return team_a_id if team_a_points < team_b_points else team_b_id
+
+    return None
+
+
+def get_group_predicted_team_id(
+    predicted_outcome: str,
+    match: dict[str, Any],
+) -> str | None:
+    if predicted_outcome == "TEAM_A_WIN":
+        return match.get("team_a_id")
+
+    if predicted_outcome == "TEAM_B_WIN":
+        return match.get("team_b_id")
+
+    return None
+
+
+def get_group_actual_winner_team_id(
+    actual_outcome: str,
+    match: dict[str, Any],
+) -> str | None:
+    if actual_outcome == "TEAM_A_WIN":
+        return match.get("team_a_id")
+
+    if actual_outcome == "TEAM_B_WIN":
+        return match.get("team_b_id")
+
+    return None
+
+
 
 def build_group_match_prediction_score_events(
     events: list[dict[str, Any]],
     group_match_predictions: list[dict[str, Any]],
     matches_by_id: dict[str, dict[str, Any]],
+    teams_by_id: dict[str, dict[str, Any]],
 ):
     for prediction in group_match_predictions:
         user_id = prediction.get("user_id")
@@ -55,7 +135,48 @@ def build_group_match_prediction_score_events(
         if not actual_outcome:
             continue
 
-        points = GROUP_MATCH_POINTS if predicted_outcome == actual_outcome else 0
+        if predicted_outcome == "DRAW":
+            points = GROUP_MATCH_POINTS if actual_outcome == "DRAW" else 0
+            description = (
+                "Group match prediction correct."
+                if points > 0
+                else "Group match prediction wrong."
+            )
+        else:
+            predicted_team_id = get_group_predicted_team_id(
+                predicted_outcome,
+                match,
+            )
+            actual_winner_team_id = get_group_actual_winner_team_id(
+                actual_outcome,
+                match,
+            )
+            underdog_team_id = get_underdog_team_id(match, teams_by_id)
+
+            if predicted_team_id and predicted_team_id == underdog_team_id:
+                if actual_winner_team_id == underdog_team_id:
+                    points = GROUP_MATCH_POINTS * 2
+                    description = (
+                        f"Group match underdog prediction correct. "
+                        f"Base {GROUP_MATCH_POINTS} x2."
+                    )
+                else:
+                    points = GROUP_MATCH_POINTS * -2
+                    description = (
+                        f"Group match underdog prediction wrong. "
+                        f"Lost {GROUP_MATCH_POINTS} x2."
+                    )
+            else:
+                points = (
+                    GROUP_MATCH_POINTS
+                    if predicted_outcome == actual_outcome
+                    else 0
+                )
+                description = (
+                    "Group match prediction correct."
+                    if points > 0
+                    else "Group match prediction wrong."
+                )
 
         add_score_event(
             events=events,
@@ -63,10 +184,7 @@ def build_group_match_prediction_score_events(
             source_type="GROUP_MATCH_PREDICTION",
             source_key=match_id,
             points=points,
-            description=(
-                f"Group match prediction: predicted {predicted_outcome}, "
-                f"actual {actual_outcome}."
-            ),
+            description=description,
         )
 
 def fetch_all(table_name: str) -> list[dict[str, Any]]:
@@ -295,6 +413,7 @@ def build_knockout_prediction_score_events(
     events: list[dict[str, Any]],
     knockout_predictions: list[dict[str, Any]],
     matches_by_id: dict[str, dict[str, Any]],
+    teams_by_id: dict[str, dict[str, Any]],
 ):
     for prediction in knockout_predictions:
         user_id = prediction.get("user_id")
@@ -321,11 +440,32 @@ def build_knockout_prediction_score_events(
 
         round_points = ROUND_POINTS.get(match_round, 0)
 
-        points = (
-            round_points
-            if predicted_winner_team_id == actual_winner_team_id
-            else 0
-        )
+        underdog_team_id = get_underdog_team_id(match, teams_by_id)
+
+        if predicted_winner_team_id == underdog_team_id:
+            if actual_winner_team_id == underdog_team_id:
+                points = round_points * 2
+                description = (
+                    f"Knockout underdog prediction correct for {match_round}. "
+                    f"Base {round_points} x2."
+                )
+            else:
+                points = round_points * -2
+                description = (
+                    f"Knockout underdog prediction wrong for {match_round}. "
+                    f"Lost {round_points} x2."
+                )
+        else:
+            points = (
+                round_points
+                if predicted_winner_team_id == actual_winner_team_id
+                else 0
+            )
+            description = (
+                f"Knockout prediction correct for {match_round}."
+                if points > 0
+                else f"Knockout prediction wrong for {match_round}."
+            )
 
         add_score_event(
             events=events,
@@ -333,7 +473,7 @@ def build_knockout_prediction_score_events(
             source_type="KNOCKOUT_PREDICTION",
             source_key=match_id,
             points=points,
-            description=f"Knockout prediction for {match_round}.",
+            description=description,
         )
 
 
@@ -501,6 +641,7 @@ def update_profile_totals(
 def recalculate_all_scores() -> dict[str, Any]:
     profiles = fetch_all("profiles")
     matches = fetch_all("matches")
+    teams = fetch_all("teams")
     group_match_predictions = fetch_all("group_match_predictions")
     group_predictions = fetch_all("group_predictions")
     group_wildcards = fetch_all("group_wildcards")
@@ -515,6 +656,12 @@ def recalculate_all_scores() -> dict[str, Any]:
         if match.get("id")
     }
 
+    teams_by_id = {
+        team["id"]: team
+        for team in teams
+        if team.get("id")
+    }
+
     actual_standings_by_group_team = {
         (standing["group_id"], standing["team_id"]): standing
         for standing in group_actual_standings
@@ -527,6 +674,7 @@ def recalculate_all_scores() -> dict[str, Any]:
         events=events,
         group_match_predictions=group_match_predictions,
         matches_by_id=matches_by_id,
+        teams_by_id=teams_by_id,
     )
 
     build_group_standing_score_events(
@@ -547,6 +695,7 @@ def recalculate_all_scores() -> dict[str, Any]:
         events=events,
         knockout_predictions=knockout_predictions,
         matches_by_id=matches_by_id,
+        teams_by_id=teams_by_id,
     )
 
     build_knockout_wildcard_score_events(
