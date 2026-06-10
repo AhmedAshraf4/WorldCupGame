@@ -108,8 +108,8 @@ function TeamOption({
       disabled={!team || disabled}
       className={`flex min-h-36 flex-col items-center justify-center rounded-3xl border p-4 text-center transition ${
         selected
-          ? "border-yellow-400 bg-yellow-400/15 shadow-lg shadow-yellow-500/10"
-          : "border-white/10 bg-white/5 hover:bg-white/10"
+          ? "scale-[1.02] border-yellow-300/70 bg-yellow-400/15 shadow-lg shadow-yellow-500/20"
+          : "border-white/10 bg-white/5 hover:bg-white/10 hover:text-white"
       } disabled:cursor-not-allowed disabled:opacity-40`}
     >
       {team?.flag_url ? (
@@ -326,7 +326,7 @@ export default function KnockoutsPage() {
           </p>
         </div>
 
-        <div className="wc-card mb-5">
+        <div className="wc-card mb-5 p-4 md:p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-bold text-white">

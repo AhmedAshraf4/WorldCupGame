@@ -151,22 +151,34 @@ export default function HomePage() {
   return (
     <main className="wc-page min-h-screen p-4 pb-24 text-white md:p-6">
       <section className="mx-auto max-w-5xl">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <p className="wc-gold mb-1 text-sm font-bold uppercase tracking-[0.2em]">
-              World Cup Challenge
-            </p>
-            <h1 className="text-3xl font-black">
-              Welcome, {data.profile?.display_name}
-            </h1>
-          </div>
+        <div className="wc-card wc-card-glow wc-26-watermark mb-6 p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-4">
+              <img
+                src="/assets/wc26-logo.jpg"
+                alt="Road to 26"
+                className="h-20 w-20 shrink-0 rounded-[1.6rem] border border-white/15 object-cover shadow-xl shadow-yellow-500/15"
+              />
+              <div className="min-w-0">
+                <p className="wc-gold mb-1 text-xs font-black uppercase tracking-[0.22em]">
+                  Predict. Compete. Unite.
+                </p>
+                <h1 className="text-3xl font-black uppercase leading-tight">
+                  Road to <span className="text-yellow-300">26</span>
+                </h1>
+                <p className="wc-muted mt-1 truncate text-sm">
+                  Welcome, {data.profile?.display_name}
+                </p>
+              </div>
+            </div>
 
-          <button
-            onClick={handleLogout}
-            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold hover:bg-white/10"
-          >
-            Logout
-          </button>
+            <button
+              onClick={handleLogout}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold hover:bg-white/10"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         <div className="mb-6 grid gap-4 md:grid-cols-3">
@@ -190,7 +202,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="wc-card p-5 text-center">
+          <div className="wc-card wc-card-glow p-5 text-center">
             <p className="wc-muted text-sm">Total Points</p>
             <h2 className="text-5xl font-black text-green-400">
               {totalPoints}

@@ -2,8 +2,8 @@
 
 import { Clock, Lock, Unlock } from "lucide-react";
 
-import { getLockUiState, type LockStatus } from "@/lib/locks";
 import { PredictionCountdown } from "@/components/PredictionCountdown";
+import { getLockUiState, type LockStatus } from "@/lib/locks";
 
 const ICONS = {
   unlock: Unlock,
@@ -22,25 +22,27 @@ export function PredictionLockBadge({
 }) {
   const state = getLockUiState(lock);
   const Icon = ICONS[state.icon];
-
   const message = state.isOpen && state.timerTarget ? "Open now" : state.message;
+  const timerLabel = state.isOpen ? "Closes in" : "Opens in";
 
   return (
-    <div className={compact ? "" : "wc-card mb-5"}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+    <div
+      className={
+        compact
+          ? "mb-4 rounded-3xl border border-white/10 bg-white/5 p-4"
+          : "wc-card wc-card-glow mb-5 p-4 md:p-5"
+      }
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="wc-gold text-xs font-black uppercase tracking-[0.26em]">
             {title}
           </p>
-          <p className="mt-1 text-sm font-bold text-white">
+          <p className="mt-2 text-sm font-bold text-slate-200">
             {state.timerTarget ? (
               <>
                 {message}
-                {state.isOpen ? " · closes in " : " "}
-                <PredictionCountdown
-                  target={state.timerTarget}
-                  closedText={state.closedText}
-                />
+                {state.isOpen ? " - prediction window active" : ""}
               </>
             ) : (
               state.message
@@ -48,12 +50,28 @@ export function PredictionLockBadge({
           </p>
         </div>
 
-        <span
-          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-3 py-1 text-xs font-black ${state.badgeClass}`}
-        >
-          <Icon className="h-3.5 w-3.5" />
-          {state.label}
-        </span>
+        <div className="flex shrink-0 items-center gap-3">
+          {state.timerTarget && (
+            <div className="rounded-2xl border border-yellow-300/35 bg-yellow-400/12 px-4 py-2 text-right shadow-lg shadow-yellow-500/10">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-yellow-100/80">
+                {timerLabel}
+              </p>
+              <p className="mt-0.5 text-xl font-black tabular-nums text-yellow-100 md:text-2xl">
+                <PredictionCountdown
+                  target={state.timerTarget}
+                  closedText={state.closedText}
+                />
+              </p>
+            </div>
+          )}
+
+          <span
+            className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-3 py-2 text-xs font-black ${state.badgeClass}`}
+          >
+            <Icon className="h-4 w-4" />
+            {state.label}
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -60,6 +60,7 @@ export default function OnboardingPage() {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [introComplete, setIntroComplete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -276,7 +277,41 @@ export default function OnboardingPage() {
   return (
     <main className="wc-page min-h-screen p-4 text-white md:p-6">
       <section className="mx-auto max-w-5xl">
+        {!loading && !introComplete && (
+          <div className="fixed inset-0 z-50 bg-slate-950 text-white">
+            <video
+              className="h-full w-full object-cover"
+              autoPlay
+              muted
+              playsInline
+              preload="auto"
+              onEnded={() => setIntroComplete(true)}
+              onError={() => {
+                setIntroComplete(true);
+              }}
+              aria-label="World Cup Challenge intro"
+            >
+              <source src="/assets/intro.mp4" type="video/mp4" />
+            </video>
+
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-transparent p-5 pt-24">
+              <button
+                type="button"
+                onClick={() => setIntroComplete(true)}
+                className="pointer-events-auto wc-button w-full px-4 py-4 text-lg md:mx-auto md:block md:max-w-sm"
+              >
+                Skip Intro
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="mb-6 text-center">
+          <img
+            src="/assets/wc26-logo.jpg"
+            alt="Road to 26"
+            className="mx-auto mb-4 h-20 w-20 rounded-[1.5rem] border border-white/15 object-cover shadow-xl shadow-yellow-500/15"
+          />
           <p className="wc-gold mb-2 text-sm font-bold uppercase tracking-[0.25em]">
             Tournament Setup
           </p>

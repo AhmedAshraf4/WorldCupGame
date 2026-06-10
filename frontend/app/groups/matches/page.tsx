@@ -183,8 +183,8 @@ function OutcomeButton({
       disabled={disabled}
       className={`rounded-2xl px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-45 ${
         active
-          ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
-          : "bg-white/10 text-slate-300 hover:bg-white/15"
+          ? "border border-yellow-300/60 bg-yellow-400/20 text-yellow-100 shadow-lg shadow-yellow-500/20"
+          : "border border-white/10 bg-white/10 text-slate-300 hover:bg-white/15 hover:text-white"
       }`}
     >
       {label}
@@ -377,7 +377,7 @@ export default function GroupMatchesPage() {
 
   return (
     <main className="wc-page min-h-screen pb-28">
-      <div className="mx-auto max-w-md px-4 py-6">
+      <div className="mx-auto max-w-5xl px-4 py-6">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <p className="wc-muted text-xs font-bold uppercase tracking-[0.3em]">
@@ -436,7 +436,7 @@ export default function GroupMatchesPage() {
           title={`Matchday ${activeMatchday} Status`}
         />
 
-        <div className="wc-card mb-5">
+        <div className="wc-card mb-5 p-4 md:p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-bold text-white">
@@ -499,7 +499,7 @@ export default function GroupMatchesPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-5 md:grid md:grid-cols-2 md:gap-5 md:space-y-0">
             {groupedMatches.map(([groupCode, groupMatches]) => (
               <section key={groupCode} className="space-y-3">
                 <div className="flex items-center justify-between">

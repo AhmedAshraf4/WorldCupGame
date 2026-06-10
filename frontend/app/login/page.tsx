@@ -109,30 +109,44 @@ export default function LoginPage() {
 
   if (checkingSession) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-white">
-        <section className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-6 text-center shadow-xl">
-          <p className="text-slate-300">Checking session...</p>
+      <main className="wc-page flex min-h-screen items-center justify-center p-6 text-white">
+        <section className="wc-card w-full max-w-md p-6 text-center">
+          <p className="wc-muted">Checking session...</p>
         </section>
       </main>
     );
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-white">
-      <section className="w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
-        <h1 className="mb-2 text-3xl font-bold">World Cup Challenge</h1>
+    <main className="wc-page flex min-h-screen items-center justify-center p-5 text-white">
+      <section className="wc-card wc-card-glow wc-26-watermark w-full max-w-md p-6 shadow-xl">
+        <div className="mb-6 text-center">
+          <img
+            src="/assets/wc26-logo.jpg"
+            alt="Road to 26"
+            className="mx-auto mb-4 h-28 w-28 rounded-[2rem] border border-white/15 object-cover shadow-2xl shadow-yellow-500/15"
+          />
+          <p className="wc-gold mb-2 text-xs font-black uppercase tracking-[0.32em]">
+            Predict. Compete. Unite.
+          </p>
+          <h1 className="text-4xl font-black uppercase tracking-tight">
+            Road to <span className="text-yellow-300">26</span>
+          </h1>
+        </div>
 
-        <p className="mb-6 text-slate-300">
+        <p className="wc-muted mb-6 text-center text-sm">
           {mode === "login"
             ? "Login to continue your tournament predictions."
             : "Create your account and join the challenge."}
         </p>
 
-        <div className="mb-4 flex rounded-xl bg-slate-800 p-1">
+        <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/5 p-1">
           <button
             onClick={() => setMode("login")}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${
-              mode === "login" ? "bg-white text-slate-950" : "text-slate-300"
+            className={`rounded-xl px-4 py-3 text-sm font-black uppercase tracking-wide transition ${
+              mode === "login"
+                ? "bg-yellow-500/20 text-yellow-100 shadow-inner shadow-yellow-500/10"
+                : "text-slate-400 hover:bg-white/5 hover:text-white"
             }`}
           >
             Login
@@ -140,26 +154,32 @@ export default function LoginPage() {
 
           <button
             onClick={() => setMode("register")}
-            className={`flex-1 rounded-lg px-4 py-2 text-sm font-semibold ${
-              mode === "register" ? "bg-white text-slate-950" : "text-slate-300"
+            className={`rounded-xl px-4 py-3 text-sm font-black uppercase tracking-wide transition ${
+              mode === "register"
+                ? "bg-yellow-500/20 text-yellow-100 shadow-inner shadow-yellow-500/10"
+                : "text-slate-400 hover:bg-white/5 hover:text-white"
             }`}
           >
             Register
           </button>
         </div>
 
-        <label className="mb-2 block text-sm text-slate-300">Email</label>
+        <label className="mb-2 block text-sm font-bold text-slate-300">
+          Email
+        </label>
         <input
-          className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-400"
+          className="mb-4 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 font-semibold outline-none focus:border-yellow-400"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           type="email"
           placeholder="you@example.com"
         />
 
-        <label className="mb-2 block text-sm text-slate-300">Password</label>
+        <label className="mb-2 block text-sm font-bold text-slate-300">
+          Password
+        </label>
         <input
-          className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 outline-none focus:border-blue-400"
+          className="mb-4 w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-4 font-semibold outline-none focus:border-yellow-400"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           type="password"
@@ -167,7 +187,7 @@ export default function LoginPage() {
         />
 
         {message && (
-          <p className="mb-4 rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-300">
+          <p className="mb-4 rounded-2xl border border-yellow-400/25 bg-yellow-400/10 p-3 text-sm font-semibold text-yellow-100">
             {message}
           </p>
         )}
@@ -175,7 +195,7 @@ export default function LoginPage() {
         <button
           onClick={handleSubmit}
           disabled={loading || !email || !password}
-          className="w-full rounded-xl bg-blue-500 px-4 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="wc-button w-full px-4 py-4 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {loading
             ? "Please wait..."

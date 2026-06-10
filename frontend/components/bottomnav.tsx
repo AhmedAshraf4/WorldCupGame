@@ -36,22 +36,21 @@ export function BottomNav() {
   const router = useRouter();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-slate-950/90 px-3 py-2 backdrop-blur-xl md:hidden">
-      <div className="mx-auto grid max-w-md grid-cols-5 gap-1">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
+      <div className="wc-nav grid w-full grid-cols-5 items-center gap-1 rounded-none border-x-0 border-b-0 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive =
             pathname === item.path ||
             (item.path !== "/" && pathname.startsWith(item.path));
-
           return (
             <button
               key={item.path}
               onClick={() => router.push(item.path)}
-              className={`flex flex-col items-center justify-center rounded-2xl px-2 py-2 text-xs font-bold transition ${
+              className={`wc-nav-item flex min-h-14 flex-col items-center justify-center rounded-2xl px-1.5 py-2 text-[10px] font-black uppercase tracking-wide ${
                 isActive
-                  ? "bg-blue-500 text-white"
-                  : "text-slate-400 hover:bg-white/5 hover:text-white"
+                  ? "wc-nav-item-active"
+                  : "hover:bg-white/5 hover:text-white"
               }`}
             >
               <Icon className="mb-1 h-5 w-5" />

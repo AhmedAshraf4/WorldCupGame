@@ -111,7 +111,7 @@ function SortableTeamCard({
           ? "border-white/10 bg-black/20 opacity-75"
           :
         isDragging
-          ? "z-50 scale-[1.03] border-yellow-400 bg-yellow-400/10 shadow-2xl"
+          ? "z-50 scale-[1.03] border-yellow-300 bg-yellow-400/10 shadow-2xl shadow-yellow-500/20"
           : "border-white/10 bg-black/25"
       }`}
     >

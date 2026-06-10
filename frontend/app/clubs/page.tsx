@@ -239,7 +239,7 @@ export default function ClubsPage() {
 
   return (
     <main className="wc-page min-h-screen pb-28">
-      <div className="mx-auto max-w-md px-4 py-6">
+      <div className="mx-auto max-w-5xl px-4 py-6">
         <div className="mb-6">
           <p className="wc-muted text-xs font-bold uppercase tracking-[0.3em]">
             Friends League

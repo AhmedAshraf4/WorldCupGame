@@ -59,8 +59,19 @@ function RankIcon({ rank }: { rank: number }) {
 }
 
 function PlayerRow({ player }: { player: Player }) {
+  const podiumClass =
+    player.rank === 1
+      ? "border-yellow-300/50 bg-yellow-400/12 shadow-yellow-500/15"
+      : player.rank === 2
+      ? "border-slate-200/35 bg-slate-200/10"
+      : player.rank === 3
+      ? "border-orange-300/40 bg-orange-400/10"
+      : "border-white/10 bg-white/5";
+
   return (
-    <div className="flex items-center justify-between rounded-3xl border border-white/10 bg-white/5 p-4">
+    <div
+      className={`wc-leaderboard-card flex items-center justify-between border p-4 shadow-lg ${podiumClass}`}
+    >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white/10">
           <RankIcon rank={player.rank} />
@@ -219,10 +230,10 @@ export default function ScoreboardPage() {
 
   return (
     <main className="wc-page min-h-screen pb-28">
-      <div className="mx-auto max-w-md px-4 py-6">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="mx-auto max-w-5xl px-4 py-6">
+        <div className="wc-card wc-card-glow mb-6 flex items-center justify-between p-5">
           <div>
-            <p className="wc-muted text-xs font-bold uppercase tracking-[0.3em]">
+            <p className="wc-gold text-xs font-bold uppercase tracking-[0.3em]">
               Leaderboard
             </p>
             <h1 className="mt-2 text-3xl font-black text-white">Scores</h1>
@@ -236,12 +247,12 @@ export default function ScoreboardPage() {
           </div>
         </div>
 
-        <div className="mb-5 grid grid-cols-2 gap-3 rounded-3xl bg-white/5 p-2">
+        <div className="mb-5 grid grid-cols-2 gap-3 rounded-3xl border border-white/10 bg-white/5 p-2">
           <button
             onClick={() => setActiveTab("global")}
             className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
               activeTab === "global"
-                ? "bg-blue-500 text-white"
+                ? "bg-yellow-500/20 text-yellow-100"
                 : "text-slate-400 hover:bg-white/5"
             }`}
           >
@@ -252,7 +263,7 @@ export default function ScoreboardPage() {
             onClick={() => setActiveTab("club")}
             className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
               activeTab === "club"
-                ? "bg-blue-500 text-white"
+                ? "bg-yellow-500/20 text-yellow-100"
                 : "text-slate-400 hover:bg-white/5"
             }`}
           >
@@ -287,7 +298,7 @@ export default function ScoreboardPage() {
                       onClick={() => selectClub(club)}
                       className={`shrink-0 rounded-2xl border px-4 py-3 text-left transition ${
                         isSelected
-                          ? "border-blue-400 bg-blue-500/15"
+                          ? "border-yellow-300/50 bg-yellow-400/15"
                           : "border-white/10 bg-white/5"
                       }`}
                     >
