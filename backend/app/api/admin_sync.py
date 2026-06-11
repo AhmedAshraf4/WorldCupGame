@@ -6,7 +6,10 @@ from app.services.football_data_service import (
     fetch_world_cup_matches_from_api,
     normalize_team_name,
 )
-from app.services.auto_sync_service import sync_matches_and_scores
+from app.services.auto_sync_service import (
+    get_auto_sync_status,
+    sync_matches_and_scores,
+)
 from app.services.scoring_service import recalculate_all_scores
 
 router = APIRouter()
@@ -81,6 +84,13 @@ async def recalculate_scores_after_manual_update(
             status_code=500,
             detail=f"Score recalculation failed: {str(exc)}",
         )
+
+
+@router.get("/auto-sync-status")
+def get_auto_football_data_sync_status(
+    user_id: str = Depends(get_admin_user_id_from_token),
+):
+    return get_auto_sync_status()
 
 
 @router.get("/football-data-team-names")

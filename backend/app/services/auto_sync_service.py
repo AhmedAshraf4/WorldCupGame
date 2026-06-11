@@ -2,16 +2,34 @@ import asyncio
 import logging
 import os
 from contextlib import suppress
+from datetime import datetime, timezone
+from typing import Any
+
+from dotenv import load_dotenv
 
 from app.services.football_data_service import sync_world_cup_matches
 from app.services.scoring_service import recalculate_all_scores
 
-logger = logging.getLogger(__name__)
+load_dotenv()
+
+logger = logging.getLogger("uvicorn.error")
 
 AUTO_SYNC_ENABLED = os.getenv("AUTO_FOOTBALL_DATA_SYNC_ENABLED", "true").lower()
 AUTO_SYNC_INTERVAL_SECONDS = int(
     os.getenv("AUTO_FOOTBALL_DATA_SYNC_INTERVAL_SECONDS", "1800")
 )
+
+LAST_AUTO_SYNC_STATUS: dict[str, Any] = {
+    "enabled": AUTO_SYNC_ENABLED in {"1", "true", "yes", "on"},
+    "interval_seconds": AUTO_SYNC_INTERVAL_SECONDS,
+    "running": False,
+    "last_started_at": None,
+    "last_finished_at": None,
+    "last_success": None,
+    "last_error": None,
+    "last_result": None,
+    "attempt_count": 0,
+}
 
 
 async def sync_matches_and_scores() -> dict:
@@ -26,21 +44,56 @@ async def sync_matches_and_scores() -> dict:
 
 async def run_auto_sync_loop():
     if AUTO_SYNC_ENABLED not in {"1", "true", "yes", "on"}:
-        logger.info("Automatic football-data sync is disabled.")
+        logger.warning("Automatic football-data sync is disabled.")
         return
 
-    while True:
-        try:
-            result = await sync_matches_and_scores()
-            logger.info("Automatic football-data sync completed: %s", result)
-        except Exception:
-            logger.exception("Automatic football-data sync failed.")
+    logger.warning(
+        "Automatic football-data sync loop started. Interval: %s seconds.",
+        AUTO_SYNC_INTERVAL_SECONDS,
+    )
 
+    while True:
+        LAST_AUTO_SYNC_STATUS["attempt_count"] += 1
+        LAST_AUTO_SYNC_STATUS["running"] = True
+        LAST_AUTO_SYNC_STATUS["last_started_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+
+        try:
+            logger.warning(
+                "Automatic football-data sync attempt %s started.",
+                LAST_AUTO_SYNC_STATUS["attempt_count"],
+            )
+            result = await sync_matches_and_scores()
+            LAST_AUTO_SYNC_STATUS["last_success"] = True
+            LAST_AUTO_SYNC_STATUS["last_error"] = None
+            LAST_AUTO_SYNC_STATUS["last_result"] = result
+            logger.warning("Automatic football-data sync completed: %s", result)
+        except Exception:
+            LAST_AUTO_SYNC_STATUS["last_success"] = False
+            LAST_AUTO_SYNC_STATUS["last_error"] = "See server logs for traceback."
+            LAST_AUTO_SYNC_STATUS["last_result"] = None
+            logger.exception("Automatic football-data sync failed.")
+        finally:
+            LAST_AUTO_SYNC_STATUS["running"] = False
+            LAST_AUTO_SYNC_STATUS["last_finished_at"] = datetime.now(
+                timezone.utc
+            ).isoformat()
+
+        logger.warning(
+            "Automatic football-data sync sleeping for %s seconds.",
+            AUTO_SYNC_INTERVAL_SECONDS,
+        )
         await asyncio.sleep(AUTO_SYNC_INTERVAL_SECONDS)
 
 
 def start_auto_sync_task() -> asyncio.Task:
+    logger.warning("Creating automatic football-data sync background task.")
     return asyncio.create_task(run_auto_sync_loop())
+
+
+def get_auto_sync_status() -> dict[str, Any]:
+    return dict(LAST_AUTO_SYNC_STATUS)
 
 
 async def stop_auto_sync_task(task: asyncio.Task | None):

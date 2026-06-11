@@ -1,7 +1,7 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.avatars import router as avatars_router
@@ -119,3 +119,8 @@ app.include_router(scoring_router, prefix="/scoring", tags=["Scoring"])
 @app.get("/")
 def root():
     return {"message": "World Cup Challenge API is running"}
+
+
+@app.head("/")
+def root_head():
+    return Response(status_code=200)
