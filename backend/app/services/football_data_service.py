@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -8,6 +9,8 @@ from dotenv import load_dotenv
 from app.core.supabase import supabase
 
 load_dotenv()
+
+logger = logging.getLogger("uvicorn.error")
 
 FOOTBALL_DATA_API_KEY = os.getenv("FOOTBALL_DATA_API_KEY")
 FOOTBALL_DATA_BASE_URL = os.getenv(
@@ -213,16 +216,40 @@ async def fetch_world_cup_matches_from_api() -> list[dict[str, Any]]:
         "season": FOOTBALL_DATA_SEASON,
     }
 
+    logger.warning(
+        "Requesting football-data.org matches: url=%s params=%s",
+        url,
+        params,
+    )
+
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(url, headers=headers, params=params)
 
+    logger.warning(
+        "football-data.org response received: status=%s",
+        response.status_code,
+    )
+
     if response.status_code >= 400:
+        logger.warning(
+            "football-data.org error response body: %s",
+            response.text[:1000],
+        )
         raise RuntimeError(
             f"football-data.org error {response.status_code}: {response.text}"
         )
 
     data = response.json()
-    return data.get("matches", [])
+    matches = data.get("matches", [])
+
+    logger.warning(
+        "football-data.org response parsed: matches=%s competition=%s season=%s",
+        len(matches),
+        FOOTBALL_DATA_COMPETITION_CODE,
+        FOOTBALL_DATA_SEASON,
+    )
+
+    return matches
 
 
 async def sync_world_cup_matches() -> dict[str, Any]:

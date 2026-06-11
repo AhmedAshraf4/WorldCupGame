@@ -69,9 +69,9 @@ async def run_auto_sync_loop():
             LAST_AUTO_SYNC_STATUS["last_error"] = None
             LAST_AUTO_SYNC_STATUS["last_result"] = result
             logger.warning("Automatic football-data sync completed: %s", result)
-        except Exception:
+        except Exception as exc:
             LAST_AUTO_SYNC_STATUS["last_success"] = False
-            LAST_AUTO_SYNC_STATUS["last_error"] = "See server logs for traceback."
+            LAST_AUTO_SYNC_STATUS["last_error"] = str(exc)
             LAST_AUTO_SYNC_STATUS["last_result"] = None
             logger.exception("Automatic football-data sync failed.")
         finally:
