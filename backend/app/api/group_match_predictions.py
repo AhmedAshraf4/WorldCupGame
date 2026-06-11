@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.core.supabase import supabase
 from app.services.lock_service import (
-    assert_prediction_open,
+    assert_match_prediction_open,
     get_group_matchday_lock_key,
 )
 
@@ -205,8 +205,10 @@ def save_group_match_predictions(
                 detail="Could not detect group matchday for this match",
             )
 
-        assert_prediction_open(
-            get_group_matchday_lock_key(matchday)
+        assert_match_prediction_open(
+            match=match,
+            lock_key=get_group_matchday_lock_key(matchday),
+            label="group match",
         )
 
         rows.append({

@@ -55,6 +55,8 @@ function datetimeLocalToIso(value: string) {
 }
 
 function getStatus(lock: PredictionLock) {
+  const matchDeadlineManaged = isMatchDeadlineManagedLock(lock.lock_key);
+
   if (lock.is_locked) {
     return {
       label: "Manually Locked",
@@ -71,7 +73,7 @@ function getStatus(lock: PredictionLock) {
     };
   }
 
-  if (lock.reason === "DEADLINE_PASSED") {
+  if (lock.reason === "DEADLINE_PASSED" && !matchDeadlineManaged) {
     return {
       label: "Deadline Passed",
       className: "border-red-400/40 bg-red-500/15 text-red-200",
@@ -93,6 +95,14 @@ function getCategory(lockKey: string) {
   if (lockKey.startsWith("CHAMPION")) return "Champion";
 
   return "Other";
+}
+
+function isMatchDeadlineManagedLock(lockKey: string) {
+  return (
+    lockKey.startsWith("GROUP_MATCHDAY_") ||
+    lockKey.startsWith("KNOCKOUT_PREDICTIONS") ||
+    lockKey.startsWith("KNOCKOUT_WILDCARD")
+  );
 }
 
 export default function AdminLocksPage() {
@@ -207,6 +217,7 @@ export default function AdminLocksPage() {
       }
 
       const editable = editableLocks[lock.lock_key];
+      const matchDeadlineManaged = isMatchDeadlineManagedLock(lock.lock_key);
 
       if (!editable) return;
 
@@ -223,7 +234,9 @@ export default function AdminLocksPage() {
         body: JSON.stringify({
           lock_key: lock.lock_key,
           open_at: datetimeLocalToIso(editable.open_at),
-          deadline_at: datetimeLocalToIso(editable.deadline_at),
+          deadline_at: matchDeadlineManaged
+            ? null
+            : datetimeLocalToIso(editable.deadline_at),
           is_locked: editable.is_locked,
         }),
       });
@@ -317,6 +330,9 @@ export default function AdminLocksPage() {
                     const status = getStatus(lock);
                     const StatusIcon = status.icon;
                     const isSaving = savingKey === lock.lock_key;
+                    const matchDeadlineManaged = isMatchDeadlineManagedLock(
+                      lock.lock_key
+                    );
 
                     if (!editable) return null;
 
@@ -364,24 +380,31 @@ export default function AdminLocksPage() {
                             />
                           </label>
 
-                          <label className="grid gap-2">
-                            <span className="text-sm font-bold text-slate-300">
-                              Deadline At
-                            </span>
+                          {matchDeadlineManaged ? (
+                            <div className="rounded-2xl border border-blue-400/20 bg-blue-500/10 p-4 text-sm font-semibold text-blue-100">
+                              Deadline is automatic: each game closes at its
+                              own kickoff time.
+                            </div>
+                          ) : (
+                            <label className="grid gap-2">
+                              <span className="text-sm font-bold text-slate-300">
+                                Deadline At
+                              </span>
 
-                            <input
-                              type="datetime-local"
-                              value={editable.deadline_at}
-                              onChange={(event) =>
-                                updateEditableLock(
-                                  lock.lock_key,
-                                  "deadline_at",
-                                  event.target.value
-                                )
-                              }
-                              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-blue-400"
-                            />
-                          </label>
+                              <input
+                                type="datetime-local"
+                                value={editable.deadline_at}
+                                onChange={(event) =>
+                                  updateEditableLock(
+                                    lock.lock_key,
+                                    "deadline_at",
+                                    event.target.value
+                                  )
+                                }
+                                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-blue-400"
+                              />
+                            </label>
+                          )}
 
                           <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
                             <input

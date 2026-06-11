@@ -161,6 +161,51 @@ def get_prediction_lock_status(lock_key: str) -> dict[str, Any]:
     }
 
 
+def get_prediction_lock_gate_status(lock_key: str) -> dict[str, Any]:
+    """
+    Checks only manual lock and open_at.
+    Match predictions use each match start time as their deadline, so the
+    prediction_locks deadline_at field should not close a whole matchday/round.
+    """
+    prediction_lock = get_prediction_lock(lock_key)
+
+    if not prediction_lock:
+        return {
+            "lock_key": lock_key,
+            "exists": False,
+            "is_open": True,
+            "is_locked": False,
+            "reason": None,
+        }
+
+    now = datetime.now(timezone.utc)
+    open_at = parse_datetime(prediction_lock.get("open_at"))
+    manually_locked = bool(prediction_lock.get("is_locked"))
+
+    if manually_locked:
+        return {
+            **prediction_lock,
+            "exists": True,
+            "is_open": False,
+            "reason": "MANUALLY_LOCKED",
+        }
+
+    if open_at and now < open_at:
+        return {
+            **prediction_lock,
+            "exists": True,
+            "is_open": False,
+            "reason": "NOT_OPEN_YET",
+        }
+
+    return {
+        **prediction_lock,
+        "exists": True,
+        "is_open": True,
+        "reason": None,
+    }
+
+
 def assert_prediction_open(lock_key: str):
     status = get_prediction_lock_status(lock_key)
 
@@ -186,6 +231,53 @@ def assert_prediction_open(lock_key: str):
         status_code=403,
         detail=f"{lock_name} are locked.",
     )
+
+
+def assert_prediction_gate_open(lock_key: str):
+    status = get_prediction_lock_gate_status(lock_key)
+
+    if status.get("is_open"):
+        return
+
+    lock_name = status.get("lock_name") or lock_key
+    reason = status.get("reason")
+
+    if reason == "NOT_OPEN_YET":
+        raise HTTPException(
+            status_code=403,
+            detail=f"{lock_name} are not open yet.",
+        )
+
+    raise HTTPException(
+        status_code=403,
+        detail=f"{lock_name} are locked.",
+    )
+
+
+def assert_match_deadline_open(match: dict[str, Any], label: str = "match"):
+    match_date = parse_datetime(match.get("match_date") or match.get("utc_date"))
+
+    if not match_date:
+        return
+
+    now = datetime.now(timezone.utc)
+
+    if now >= match_date:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This {label} prediction deadline has passed.",
+        )
+
+
+def assert_match_prediction_open(
+    match: dict[str, Any],
+    lock_key: str | None = None,
+    label: str = "match",
+):
+    if lock_key:
+        assert_prediction_gate_open(lock_key)
+
+    assert_match_deadline_open(match, label)
 
 
 def get_group_matchday_lock_key(matchday: int) -> str:

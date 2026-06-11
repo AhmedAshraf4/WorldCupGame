@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.core.supabase import supabase
 from app.services.lock_service import (
-    assert_prediction_open,
+    assert_match_prediction_open,
     get_knockout_prediction_lock_key,
     get_match_round,
 )
@@ -352,8 +352,10 @@ def save_knockout_predictions(
                 detail="Could not detect knockout round for this match",
             )
 
-        assert_prediction_open(
-            get_knockout_prediction_lock_key(match_round)
+        assert_match_prediction_open(
+            match=match,
+            lock_key=get_knockout_prediction_lock_key(match_round),
+            label="knockout match",
         )
 
         team_a_id = match.get("team_a_id")

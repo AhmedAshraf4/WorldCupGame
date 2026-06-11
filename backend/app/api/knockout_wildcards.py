@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.core.supabase import supabase
 from app.services.lock_service import (
-    assert_prediction_open,
+    assert_match_prediction_open,
     get_knockout_wildcard_lock_key,
 )
 
@@ -349,10 +349,6 @@ def save_knockout_wildcards(
                 detail="Invalid wildcard round",
             )
 
-        assert_prediction_open(
-            get_knockout_wildcard_lock_key(wildcard_round)
-        )
-
         if not is_valid_uuid(item.team_id):
             raise HTTPException(status_code=400, detail="Invalid team id")
 
@@ -369,19 +365,28 @@ def save_knockout_wildcards(
             detail="You can only select one wildcard per knockout round",
         )
 
-    predicted_team_ids_by_round = get_user_prediction_team_ids_by_round(user_id)
+    predictions = get_user_knockout_predictions_with_data(user_id)
+    predictions_by_round_team = {
+        f"{prediction['wildcard_round']}:{prediction['team_id']}": prediction
+        for prediction in predictions
+    }
 
     for item in normalized_items:
         wildcard_round = item["wildcard_round"]
         team_id = item["team_id"]
+        prediction = predictions_by_round_team.get(f"{wildcard_round}:{team_id}")
 
-        valid_team_ids = predicted_team_ids_by_round.get(wildcard_round, set())
-
-        if team_id not in valid_team_ids:
+        if not prediction:
             raise HTTPException(
                 status_code=400,
                 detail="Wildcard team must exist in your predictions for the same knockout round",
             )
+
+        assert_match_prediction_open(
+            match=prediction["match"],
+            lock_key=get_knockout_wildcard_lock_key(wildcard_round),
+            label="knockout wildcard",
+        )
 
     now = datetime.now(timezone.utc).isoformat()
 

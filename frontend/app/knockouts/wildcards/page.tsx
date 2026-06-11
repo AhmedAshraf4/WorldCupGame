@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Star, Trophy } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
-import { PredictionLockBadge } from "@/components/PredictionLockBadge";
 import {
   getLockedButtonLabel,
   mapLocksByKey,
@@ -69,6 +68,37 @@ const ROUND_SHORT_LABELS: Record<KnockoutWildcardRound, string> = {
   SEMI_FINAL: "SF",
   FINAL: "Final",
 };
+
+function getMatchDateFromOption(option?: KnockoutPredictionOption | null) {
+  const value = option?.match?.match_date;
+
+  return typeof value === "string" ? value : null;
+}
+
+function isLockGateOpen(lock?: LockStatus) {
+  return !lock || lock.is_open || lock.reason === "DEADLINE_PASSED";
+}
+
+function isWildcardOptionDeadlineOpen(
+  option?: KnockoutPredictionOption | null
+) {
+  const matchDateValue = getMatchDateFromOption(option);
+
+  if (!matchDateValue) return true;
+
+  const matchDate = new Date(matchDateValue);
+
+  if (Number.isNaN(matchDate.getTime())) return true;
+
+  return Date.now() < matchDate.getTime();
+}
+
+function isWildcardOptionOpen(
+  option?: KnockoutPredictionOption | null,
+  lock?: LockStatus
+) {
+  return isLockGateOpen(lock) && isWildcardOptionDeadlineOpen(option);
+}
 
 const WILDCARD_LOCK_KEYS: Record<KnockoutWildcardRound, string> = {
   ROUND_OF_32: "KNOCKOUT_WILDCARD_ROUND_OF_32",
@@ -330,17 +360,21 @@ export default function KnockoutWildcardsPage() {
 
   const currentGroup = optionsByRound[currentRound];
   const currentLock = locksByKey[WILDCARD_LOCK_KEYS[currentRound]];
-  const currentIsOpen = !currentLock || currentLock.is_open;
+  const currentGateOpen = isLockGateOpen(currentLock);
   const currentOptions = currentGroup.options || [];
   const currentIndex = indexByRound[currentRound] || 0;
   const currentPrediction = currentOptions[currentIndex];
+  const currentPredictionOpen = isWildcardOptionOpen(
+    currentPrediction,
+    currentLock
+  );
 
   const selectedCount = ROUND_ORDER.filter(
     (round) => selectedTeamByRound[round]
   ).length;
 
   function previousWildcard() {
-    if (!currentIsOpen) return;
+    if (!currentGateOpen) return;
     if (currentOptions.length === 0) return;
 
     setIndexByRound((previous) => ({
@@ -354,7 +388,7 @@ export default function KnockoutWildcardsPage() {
   }
 
   function nextWildcard() {
-    if (!currentIsOpen) return;
+    if (!currentGateOpen) return;
     if (currentOptions.length === 0) return;
 
     setIndexByRound((previous) => ({
@@ -368,7 +402,7 @@ export default function KnockoutWildcardsPage() {
   }
 
   function goToWildcardIndex(index: number) {
-    if (!currentIsOpen) return;
+    if (!currentGateOpen) return;
 
     setIndexByRound((previous) => ({
       ...previous,
@@ -392,7 +426,7 @@ export default function KnockoutWildcardsPage() {
   }
 
 function confirmCurrentWildcard() {
-  if (!currentIsOpen) return;
+  if (!currentPredictionOpen) return;
   if (!currentPrediction) return;
 
   setSelectedTeamByRound((previous) => ({
@@ -407,7 +441,7 @@ function confirmCurrentWildcard() {
         return;
       }
 
-      if (!currentIsOpen) {
+      if (!currentGateOpen) {
         throw new Error(getLockedButtonLabel(currentLock));
       }
 
@@ -417,14 +451,20 @@ function confirmCurrentWildcard() {
 
       const wildcards = ROUND_ORDER.filter((round) => {
         const lock = locksByKey[WILDCARD_LOCK_KEYS[round]];
-        return selectedTeamByRound[round] && (!lock || lock.is_open);
+        const group = optionsByRound[round];
+        const selectedTeamId = selectedTeamByRound[round];
+        const selectedOption = group.options.find(
+          (option) => option.team_id === selectedTeamId
+        );
+
+        return selectedTeamId && isWildcardOptionOpen(selectedOption, lock);
       }).map((round) => ({
         wildcard_round: round,
         team_id: selectedTeamByRound[round],
       }));
 
       if (wildcards.length === 0) {
-        throw new Error("Select at least one knockout wildcard.");
+        throw new Error("Select at least one open knockout wildcard.");
       }
 
       const response = await fetch(`${API_BASE_URL}/knockout-wildcards`, {
@@ -511,13 +551,6 @@ function confirmCurrentWildcard() {
           </p>
         )}
 
-        {!loading && (
-          <PredictionLockBadge
-            lock={currentLock}
-            title={`${currentGroup.round_label} Wildcard Status`}
-          />
-        )}
-
         {!loading &&
           optionGroups.every((group) => group.options.length === 0) && (
             <div className="wc-card p-6 text-center">
@@ -588,7 +621,7 @@ function confirmCurrentWildcard() {
                 >
                   <button
                     onClick={previousWildcard}
-                    disabled={!currentIsOpen}
+                    disabled={!currentGateOpen}
                     className="absolute left-4 z-40 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
                   >
                     ‹
@@ -596,7 +629,7 @@ function confirmCurrentWildcard() {
 
                   <button
                     onClick={nextWildcard}
-                    disabled={!currentIsOpen}
+                    disabled={!currentGateOpen}
                     className="absolute right-4 z-40 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
                   >
                     ›
@@ -641,7 +674,7 @@ function confirmCurrentWildcard() {
                               key={prediction.id || prediction.team_id}
                               type="button"
                               onClick={() => goToWildcardIndex(index)}
-                              disabled={Math.abs(offset) > 2 || !currentIsOpen}
+                              disabled={Math.abs(offset) > 2 || !currentGateOpen}
                               className={`absolute left-1/2 top-1/2 flex items-center justify-center rounded-full border shadow-2xl transition-all duration-500 ease-out ${
                                 isCurrent
                                   ? "h-40 w-40 border-blue-400/60 bg-blue-500/15 shadow-blue-500/30"
@@ -702,9 +735,17 @@ function confirmCurrentWildcard() {
                         </div>
                       )}
 
+                      {!currentPredictionOpen && (
+                        <div className="mx-auto mt-4 max-w-sm rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-200">
+                          {isWildcardOptionDeadlineOpen(currentPrediction)
+                            ? "Wildcards are locked for this round."
+                            : "Wildcard closed. This game has already kicked off."}
+                        </div>
+                      )}
+
                       <button
                         onClick={confirmCurrentWildcard}
-                        disabled={!currentIsOpen}
+                        disabled={!currentPredictionOpen}
                         className="wc-button-gold mt-5 px-8 py-3 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {selectedTeamByRound[currentRound] ===
@@ -750,12 +791,12 @@ function confirmCurrentWildcard() {
                 ) : (
                   <button
                     onClick={saveWildcards}
-                    disabled={saving || selectedCount === 0 || !currentIsOpen}
+                    disabled={saving || selectedCount === 0 || !currentGateOpen}
                     className="wc-button px-4 py-4 text-lg disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {saving
                       ? "Saving..."
-                      : !currentIsOpen
+                      : !currentGateOpen
                       ? getLockedButtonLabel(currentLock)
                       : selectedCount === 0
                       ? "Choose a prediction first"
@@ -766,12 +807,12 @@ function confirmCurrentWildcard() {
 
               <button
                 onClick={saveWildcards}
-                disabled={saving || selectedCount === 0 || !currentIsOpen}
+                disabled={saving || selectedCount === 0 || !currentGateOpen}
                 className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 font-bold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {saving
                   ? "Saving..."
-                  : !currentIsOpen
+                  : !currentGateOpen
                   ? getLockedButtonLabel(currentLock)
                   : selectedCount === 0
                   ? "Choose a prediction first"

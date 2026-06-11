@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,8 +24,23 @@ from app.api.scoring import router as scoring_router
 from app.api.admin_results import router as admin_results_router
 from app.api.admin_locks import router as admin_locks_router
 from app.api.locks import router as locks_router
+from app.services.auto_sync_service import (
+    start_auto_sync_task,
+    stop_auto_sync_task,
+)
 
-app = FastAPI(title="World Cup Challenge API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    auto_sync_task = start_auto_sync_task()
+
+    try:
+        yield
+    finally:
+        await stop_auto_sync_task(auto_sync_task)
+
+
+app = FastAPI(title="World Cup Challenge API", lifespan=lifespan)
 
 frontend_origins = [
     origin.strip()

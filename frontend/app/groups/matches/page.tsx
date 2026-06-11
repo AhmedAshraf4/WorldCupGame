@@ -14,7 +14,6 @@ import {
 
 import { supabase } from "@/lib/supabase/client";
 import { BottomNav } from "@/components/bottomnav";
-import { PredictionLockBadge } from "@/components/PredictionLockBadge";
 import { getLockedButtonLabel, mapLocksByKey } from "@/lib/locks";
 import {
   formatTeamRank,
@@ -106,15 +105,13 @@ function getLockMessage(lock?: LockStatus) {
 
   if (lock.is_open) return "This matchday is open for predictions.";
 
+  if (lock.reason === "DEADLINE_PASSED") {
+    return "Each game now closes at its own kickoff time.";
+  }
+
   if (lock.reason === "NOT_OPEN_YET") {
     return `This matchday is not open yet. Opens at ${formatLockDate(
       lock.open_at
-    )}.`;
-  }
-
-  if (lock.reason === "DEADLINE_PASSED") {
-    return `This matchday deadline has passed. Deadline was ${formatLockDate(
-      lock.deadline_at
     )}.`;
   }
 
@@ -122,7 +119,7 @@ function getLockMessage(lock?: LockStatus) {
 }
 
 function getLockBadge(lock?: LockStatus) {
-  if (!lock || lock.is_open) {
+  if (!lock || lock.is_open || lock.reason === "DEADLINE_PASSED") {
     return {
       label: "Open",
       className: "border-green-400/40 bg-green-500/15 text-green-200",
@@ -138,19 +135,29 @@ function getLockBadge(lock?: LockStatus) {
     };
   }
 
-  if (lock.reason === "DEADLINE_PASSED") {
-    return {
-      label: "Deadline Passed",
-      className: "border-red-400/40 bg-red-500/15 text-red-200",
-      Icon: Lock,
-    };
-  }
-
   return {
     label: "Locked",
     className: "border-red-400/40 bg-red-500/15 text-red-200",
     Icon: Lock,
   };
+}
+
+function isLockGateOpen(lock?: LockStatus) {
+  return !lock || lock.is_open || lock.reason === "DEADLINE_PASSED";
+}
+
+function isMatchDeadlineOpen(match: Match) {
+  if (!match.match_date) return true;
+
+  const matchDate = new Date(match.match_date);
+
+  if (Number.isNaN(matchDate.getTime())) return true;
+
+  return Date.now() < matchDate.getTime();
+}
+
+function isMatchPredictionOpen(match: Match, lock?: LockStatus) {
+  return isLockGateOpen(lock) && isMatchDeadlineOpen(match);
 }
 
 function TeamLabel({
@@ -303,7 +310,7 @@ export default function GroupMatchesPage() {
         const firstOpenMatchday =
           [1, 2, 3].find((matchday) => {
             const lock = nextLocksByKey[MATCHDAY_LOCK_KEYS[matchday]];
-            return !lock || lock.is_open;
+            return isLockGateOpen(lock);
           }) || 1;
 
         setActiveMatchday(firstOpenMatchday);
@@ -318,7 +325,7 @@ export default function GroupMatchesPage() {
   }, [router]);
 
   const activeLock = locksByKey[MATCHDAY_LOCK_KEYS[activeMatchday]];
-  const activeIsOpen = !activeLock || activeLock.is_open;
+  const activeGateOpen = isLockGateOpen(activeLock);
 
   const matchdayCounts = useMemo(() => {
     return {
@@ -352,6 +359,11 @@ export default function GroupMatchesPage() {
     (match) => selectedOutcomes[match.id]
   ).length;
 
+  const activeEditableSelectedCount = activeMatches.filter(
+    (match) =>
+      isMatchPredictionOpen(match, activeLock) && selectedOutcomes[match.id]
+  ).length;
+
   async function savePredictions() {
     try {
       if (!token) {
@@ -359,7 +371,7 @@ export default function GroupMatchesPage() {
         return;
       }
 
-      if (!activeIsOpen) {
+      if (!activeGateOpen) {
         setError(getLockMessage(activeLock));
         return;
       }
@@ -369,14 +381,18 @@ export default function GroupMatchesPage() {
       setSuccess("");
 
       const predictions = activeMatches
-        .filter((match) => selectedOutcomes[match.id])
+        .filter(
+          (match) =>
+            isMatchPredictionOpen(match, activeLock) &&
+            selectedOutcomes[match.id]
+        )
         .map((match) => ({
           match_id: match.id,
           predicted_outcome: selectedOutcomes[match.id],
         }));
 
       if (predictions.length === 0) {
-        setError("Choose at least one prediction before saving.");
+        setError("Choose at least one open match prediction before saving.");
         return;
       }
 
@@ -458,11 +474,6 @@ export default function GroupMatchesPage() {
           })}
         </div>
 
-        <PredictionLockBadge
-          lock={activeLock}
-          title={`Matchday ${activeMatchday} Status`}
-        />
-
         <div className="wc-card mb-5 p-4 md:p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -480,8 +491,8 @@ export default function GroupMatchesPage() {
               onClick={savePredictions}
               disabled={
                 saving ||
-                activeSelectedCount === 0 ||
-                !activeIsOpen ||
+                activeEditableSelectedCount === 0 ||
+                !activeGateOpen ||
                 activeMatches.length === 0
               }
               className="wc-button min-w-24 disabled:cursor-not-allowed disabled:opacity-50"
@@ -489,9 +500,9 @@ export default function GroupMatchesPage() {
               {saving ? (
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               ) : (
-                !activeIsOpen
+                !activeGateOpen
                   ? getLockedButtonLabel(activeLock)
-                  : activeSelectedCount === 0
+                  : activeEditableSelectedCount === 0
                   ? "Choose a prediction first"
                   : "Save"
               )}
@@ -545,6 +556,8 @@ export default function GroupMatchesPage() {
                     match.team_a,
                     match.team_b
                   );
+                  const matchOpen = isMatchPredictionOpen(match, activeLock);
+                  const deadlinePassed = !isMatchDeadlineOpen(match);
 
                   return (
                     <div key={match.id} className="wc-card space-y-4">
@@ -585,9 +598,11 @@ export default function GroupMatchesPage() {
                         </div>
                       )}
 
-                      {!activeIsOpen && (
+                      {!matchOpen && (
                         <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-200">
-                          {getLockMessage(activeLock)}
+                          {deadlinePassed
+                            ? "Prediction closed. This game has already kicked off."
+                            : getLockMessage(activeLock)}
                         </div>
                       )}
 
@@ -595,7 +610,7 @@ export default function GroupMatchesPage() {
                         <OutcomeButton
                           label={`${match.team_a.name} win`}
                           active={selected === "TEAM_A_WIN"}
-                          disabled={!activeIsOpen}
+                          disabled={!matchOpen}
                           onClick={() =>
                             setSelectedOutcomes((previous) => ({
                               ...previous,
@@ -607,7 +622,7 @@ export default function GroupMatchesPage() {
                         <OutcomeButton
                           label="Draw"
                           active={selected === "DRAW"}
-                          disabled={!activeIsOpen}
+                          disabled={!matchOpen}
                           onClick={() =>
                             setSelectedOutcomes((previous) => ({
                               ...previous,
@@ -619,7 +634,7 @@ export default function GroupMatchesPage() {
                         <OutcomeButton
                           label={`${match.team_b.name} win`}
                           active={selected === "TEAM_B_WIN"}
-                          disabled={!activeIsOpen}
+                          disabled={!matchOpen}
                           onClick={() =>
                             setSelectedOutcomes((previous) => ({
                               ...previous,

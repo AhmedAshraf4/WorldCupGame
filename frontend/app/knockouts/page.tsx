@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
-import { PredictionLockBadge } from "@/components/PredictionLockBadge";
 import {
   mapLocksByKey,
   type LockStatus,
@@ -94,6 +93,20 @@ function formatMatchDate(value?: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function isLockGateOpen(lock?: LockStatus | null) {
+  return !lock || lock.is_open || lock.reason === "DEADLINE_PASSED";
+}
+
+function isMatchDeadlineOpen(match: KnockoutMatch) {
+  if (!match.match_date) return true;
+
+  const matchDate = new Date(match.match_date);
+
+  if (Number.isNaN(matchDate.getTime())) return true;
+
+  return Date.now() < matchDate.getTime();
 }
 
 function TeamOption({
@@ -261,7 +274,7 @@ export default function KnockoutsPage() {
 
   function isMatchOpen(match: KnockoutMatch) {
     const lock = getMatchLock(match);
-    return !lock || lock.is_open;
+    return isLockGateOpen(lock) && isMatchDeadlineOpen(match);
   }
 
   const editableSelectedCount = matches.filter(
@@ -399,12 +412,6 @@ export default function KnockoutsPage() {
           <div className="space-y-6">
             {Object.entries(matchesByRound).map(([round, roundMatches]) => (
               <section key={round} className="wc-card">
-                <PredictionLockBadge
-                  lock={getMatchLock(roundMatches[0])}
-                  title={`${round} Status`}
-                  compact
-                />
-
                 <div className="mb-4 flex items-center gap-2">
                   <Shield className="h-5 w-5 text-yellow-300" />
                   <h2 className="text-xl font-black text-white">{round}</h2>
@@ -413,8 +420,8 @@ export default function KnockoutsPage() {
                 <div className="space-y-4">
                   {roundMatches.map((match) => {
                     const selectedWinner = selectedWinnerByMatchId[match.id];
-                    const matchLock = getMatchLock(match);
-                    const matchOpen = !matchLock || matchLock.is_open;
+                    const matchOpen = isMatchOpen(match);
+                    const deadlinePassed = !isMatchDeadlineOpen(match);
                     const underdogTeamId = getMeaningfulUnderdogTeamId(
                       match.team_a,
                       match.team_b
@@ -463,6 +470,14 @@ export default function KnockoutsPage() {
                             }
                           />
                         </div>
+
+                        {!matchOpen && (
+                          <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-200">
+                            {deadlinePassed
+                              ? "Prediction closed. This game has already kicked off."
+                              : "Predictions are locked for this round."}
+                          </div>
+                        )}
 
                         {underdogTeamId && (
                           <div className="mt-3 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">

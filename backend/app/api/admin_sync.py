@@ -3,10 +3,10 @@ from fastapi.security import APIKeyHeader
 
 from app.core.supabase import supabase
 from app.services.football_data_service import (
-    sync_world_cup_matches,
     fetch_world_cup_matches_from_api,
     normalize_team_name,
 )
+from app.services.auto_sync_service import sync_matches_and_scores
 from app.services.scoring_service import recalculate_all_scores
 
 router = APIRouter()
@@ -50,14 +50,11 @@ async def sync_football_data(
     user_id: str = Depends(get_admin_user_id_from_token),
 ):
     try:
-        sync_result = await sync_world_cup_matches()
-
-        scoring_result = recalculate_all_scores()
+        result = await sync_matches_and_scores()
 
         return {
             "message": "Football data synced and scores recalculated successfully",
-            "sync": sync_result,
-            "scoring": scoring_result,
+            **result,
         }
 
     except Exception as exc:
