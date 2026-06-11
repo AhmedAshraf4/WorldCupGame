@@ -77,6 +77,17 @@ def get_team_id_by_name(team_name: str | None) -> str | None:
     return None
 
 
+def load_team_ids_by_name() -> dict[str, str]:
+    result = supabase.table("teams").select("id,name").execute()
+    rows = result.data or []
+
+    return {
+        row["name"]: row["id"]
+        for row in rows
+        if row.get("id") and row.get("name")
+    }
+
+
 def get_outcome_from_api_match(match: dict[str, Any]) -> str | None:
     """
     We store outcome only:
@@ -199,6 +210,34 @@ def get_group_id_by_code(group_code: str | None) -> str | None:
     return None
 
 
+def load_group_ids_by_code() -> dict[str, str]:
+    result = supabase.table("groups").select("id,code").execute()
+    rows = result.data or []
+
+    return {
+        row["code"]: row["id"]
+        for row in rows
+        if row.get("id") and row.get("code")
+    }
+
+
+def load_existing_matches_by_api_id() -> dict[str, dict[str, Any]]:
+    result = (
+        supabase
+        .table("matches")
+        .select("id,api_match_id,is_manual_override")
+        .eq("api_provider", API_PROVIDER)
+        .execute()
+    )
+    rows = result.data or []
+
+    return {
+        str(row["api_match_id"]): row
+        for row in rows
+        if row.get("api_match_id")
+    }
+
+
 async def fetch_world_cup_matches_from_api() -> list[dict[str, Any]]:
     if not FOOTBALL_DATA_API_KEY:
         raise RuntimeError("FOOTBALL_DATA_API_KEY is missing from backend/.env")
@@ -260,6 +299,17 @@ async def sync_world_cup_matches() -> dict[str, Any]:
         len(api_matches),
     )
 
+    logger.warning("football-data.org Supabase sync preload started.")
+    team_ids_by_name = load_team_ids_by_name()
+    group_ids_by_code = load_group_ids_by_code()
+    existing_matches_by_api_id = load_existing_matches_by_api_id()
+    logger.warning(
+        "football-data.org Supabase sync preload completed: teams=%s groups=%s existing_matches=%s",
+        len(team_ids_by_name),
+        len(group_ids_by_code),
+        len(existing_matches_by_api_id),
+    )
+
     synced = 0
     skipped_missing_team = 0
     skipped_manual_override = 0
@@ -291,8 +341,8 @@ async def sync_world_cup_matches() -> dict[str, Any]:
         api_team_a_name = api_team_a.get("name")
         api_team_b_name = api_team_b.get("name")
 
-        team_a_id = get_team_id_by_name(api_team_a_name)
-        team_b_id = get_team_id_by_name(api_team_b_name)
+        team_a_id = team_ids_by_name.get(normalize_team_name(api_team_a_name))
+        team_b_id = team_ids_by_name.get(normalize_team_name(api_team_b_name))
 
         if not team_a_id or not team_b_id:
             skipped_missing_team += 1
@@ -305,16 +355,7 @@ async def sync_world_cup_matches() -> dict[str, Any]:
             })
             continue
 
-        existing_result = (
-            supabase
-            .table("matches")
-            .select("*")
-            .eq("api_provider", API_PROVIDER)
-            .eq("api_match_id", api_match_id)
-            .execute()
-        )
-
-        existing_match = existing_result.data[0] if existing_result.data else None
+        existing_match = existing_matches_by_api_id.get(api_match_id)
 
         if existing_match and existing_match.get("is_manual_override"):
             skipped_manual_override += 1
@@ -330,7 +371,7 @@ async def sync_world_cup_matches() -> dict[str, Any]:
         )
 
         group_code = extract_group_code(api_match.get("group"))
-        group_id = get_group_id_by_code(group_code) if app_stage == "GROUP" else None
+        group_id = group_ids_by_code.get(group_code) if app_stage == "GROUP" else None
 
         row = {
             "stage": app_stage,
@@ -360,7 +401,15 @@ async def sync_world_cup_matches() -> dict[str, Any]:
                 .execute()
             )
         else:
-            supabase.table("matches").insert(row).execute()
+            insert_result = supabase.table("matches").insert(row).execute()
+            inserted_match = (insert_result.data or [{}])[0]
+
+            if inserted_match.get("id"):
+                existing_matches_by_api_id[api_match_id] = {
+                    "id": inserted_match["id"],
+                    "api_match_id": api_match_id,
+                    "is_manual_override": False,
+                }
 
         synced += 1
 

@@ -242,6 +242,8 @@ def set_match_winner(
         .table("matches")
         .update({
             "actual_winner_team_id": payload.actual_winner_team_id,
+            "is_manual_override": True,
+            "status": "FINISHED",
         })
         .eq("id", payload.match_id)
         .execute()
@@ -575,6 +577,8 @@ def set_group_match_outcome(
         .table("matches")
         .update({
             "actual_outcome": payload.actual_outcome,
+            "is_manual_override": True,
+            "status": "FINISHED",
         })
         .eq("id", payload.match_id)
         .execute()
