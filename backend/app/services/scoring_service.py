@@ -1,7 +1,10 @@
 from collections import defaultdict
+import logging
 from typing import Any
 
 from app.core.supabase import supabase
+
+logger = logging.getLogger("uvicorn.error")
 
 PAGE_SIZE = 1000
 
@@ -188,6 +191,8 @@ def build_group_match_prediction_score_events(
         )
 
 def fetch_all(table_name: str) -> list[dict[str, Any]]:
+    logger.warning("Scoring fetch started: table=%s", table_name)
+
     rows: list[dict[str, Any]] = []
     start = 0
 
@@ -207,6 +212,12 @@ def fetch_all(table_name: str) -> list[dict[str, Any]]:
             break
 
         start += PAGE_SIZE
+
+    logger.warning(
+        "Scoring fetch completed: table=%s rows=%s",
+        table_name,
+        len(rows),
+    )
 
     return rows
 
@@ -585,6 +596,8 @@ def build_champion_score_events(
         
 
 def replace_score_events(events: list[dict[str, Any]]):
+    logger.warning("Scoring replace events started: events=%s", len(events))
+
     (
         supabase
         .table("user_score_events")
@@ -601,11 +614,15 @@ def replace_score_events(events: list[dict[str, Any]]):
             .execute()
         )
 
+    logger.warning("Scoring replace events completed: events=%s", len(events))
+
 
 def update_profile_totals(
     events: list[dict[str, Any]],
     profiles: list[dict[str, Any]],
 ) -> int:
+    logger.warning("Scoring profile total update started: profiles=%s", len(profiles))
+
     totals = defaultdict(int)
 
     for event in events:
@@ -635,10 +652,17 @@ def update_profile_totals(
 
         updated_count += 1
 
+    logger.warning(
+        "Scoring profile total update completed: updated_profiles=%s",
+        updated_count,
+    )
+
     return updated_count
 
 
 def recalculate_all_scores() -> dict[str, Any]:
+    logger.warning("Scoring recalculation started.")
+
     profiles = fetch_all("profiles")
     matches = fetch_all("matches")
     teams = fetch_all("teams")
@@ -720,10 +744,14 @@ def recalculate_all_scores() -> dict[str, Any]:
         profiles=profiles,
     )
 
-    return {
+    result = {
         "message": "Scores recalculated successfully",
         "score_events_count": len(events),
         "updated_profiles_count": updated_profiles,
         "score_sum": sum(int(event.get("points") or 0) for event in events),
         "actual_champion_team_id": actual_champion_team_id,
     }
+
+    logger.warning("Scoring recalculation completed: %s", result)
+
+    return result

@@ -255,6 +255,11 @@ async def fetch_world_cup_matches_from_api() -> list[dict[str, Any]]:
 async def sync_world_cup_matches() -> dict[str, Any]:
     api_matches = await fetch_world_cup_matches_from_api()
 
+    logger.warning(
+        "football-data.org Supabase sync started: api_matches=%s",
+        len(api_matches),
+    )
+
     synced = 0
     skipped_missing_team = 0
     skipped_manual_override = 0
@@ -262,7 +267,16 @@ async def sync_world_cup_matches() -> dict[str, Any]:
 
     missing_teams: list[dict[str, str | None]] = []
 
-    for api_match in api_matches:
+    for index, api_match in enumerate(api_matches, start=1):
+        if index == 1 or index % 10 == 0 or index == len(api_matches):
+            logger.warning(
+                "football-data.org Supabase sync progress: match=%s/%s synced=%s skipped_missing_team=%s",
+                index,
+                len(api_matches),
+                synced,
+                skipped_missing_team,
+            )
+
         raw_api_match_id = api_match.get("id")
 
         if raw_api_match_id is None:
@@ -350,7 +364,7 @@ async def sync_world_cup_matches() -> dict[str, Any]:
 
         synced += 1
 
-    return {
+    result = {
         "provider": API_PROVIDER,
         "api_matches_found": len(api_matches),
         "synced": synced,
@@ -359,3 +373,7 @@ async def sync_world_cup_matches() -> dict[str, Any]:
         "skipped_missing_api_id": skipped_missing_api_id,
         "missing_teams": missing_teams,
     }
+
+    logger.warning("football-data.org Supabase sync completed: %s", result)
+
+    return result

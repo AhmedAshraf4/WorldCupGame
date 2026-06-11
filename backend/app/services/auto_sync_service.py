@@ -33,8 +33,21 @@ LAST_AUTO_SYNC_STATUS: dict[str, Any] = {
 
 
 async def sync_matches_and_scores() -> dict:
+    logger.warning("Automatic football-data sync: syncing matches to Supabase.")
     sync_result = await sync_world_cup_matches()
+
+    logger.warning(
+        "Automatic football-data sync: match sync finished: %s",
+        sync_result,
+    )
+
+    logger.warning("Automatic football-data sync: recalculating scores.")
     scoring_result = recalculate_all_scores()
+
+    logger.warning(
+        "Automatic football-data sync: score recalculation finished: %s",
+        scoring_result,
+    )
 
     return {
         "sync": sync_result,
