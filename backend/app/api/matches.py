@@ -39,8 +39,8 @@ def get_group_stage_matches():
 
     matches.sort(
         key=lambda item: (
-            item["group"]["code"] if item.get("group") else "",
             item.get("match_date") or "",
+            item["group"]["code"] if item.get("group") else "",
             item["team_a"]["name"] if item.get("team_a") else "",
             item["team_b"]["name"] if item.get("team_b") else "",
         )

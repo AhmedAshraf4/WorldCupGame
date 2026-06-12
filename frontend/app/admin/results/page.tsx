@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
+import {
+  getMatchTimestamp,
+  MatchTimeBadge,
+} from "@/components/MatchTimeBadge";
 import { supabase } from "@/lib/supabase/client";
 import {
   formatTeamRank,
@@ -45,6 +49,7 @@ type KnockoutMatch = {
   stage?: string | null;
   match_round?: string | null;
   match_date?: string | null;
+  status?: string | null;
   venue?: string | null;
   team_a_id: string;
   team_b_id: string;
@@ -177,6 +182,20 @@ function TeamBadge({
       </div>
     </div>
   );
+}
+
+function sortByMatchTime<T extends { match_date?: string | null }>(
+  items: T[],
+  getFallbackLabel: (item: T) => string
+) {
+  return [...items].sort((a, b) => {
+    const dateDifference =
+      getMatchTimestamp(a.match_date) - getMatchTimestamp(b.match_date);
+
+    if (dateDifference !== 0) return dateDifference;
+
+    return getFallbackLabel(a).localeCompare(getFallbackLabel(b));
+  });
 }
 
 export default function AdminResultsPage() {
@@ -348,36 +367,34 @@ export default function AdminResultsPage() {
     void Promise.resolve().then(loadData);
   }, [checkingAdmin]);
 
-  const knockoutMatchesByRound = useMemo(() => {
-    const grouped: Record<string, KnockoutMatch[]> = {};
-
-    knockoutMatches.forEach((match) => {
-      const label = getRoundLabel(match);
-
-      if (!grouped[label]) {
-        grouped[label] = [];
+  async function recalculateScores(authToken: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/admin/sync/recalculate-scores`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
       }
+    );
 
-      grouped[label].push(match);
-    });
+    const json = await response.json().catch(() => null);
 
-    return grouped;
+    if (!response.ok) {
+      throw new Error(json?.detail || "Failed to recalculate scores");
+    }
+
+    return json;
+  }
+
+  const sortedKnockoutMatches = useMemo(() => {
+    return sortByMatchTime(knockoutMatches, getRoundLabel);
   }, [knockoutMatches]);
 
-  const groupMatchesByMatchday = useMemo(() => {
-    const grouped: Record<string, GroupMatch[]> = {};
-
-    groupMatches.forEach((match) => {
-      const key = `Matchday ${match.matchday || "?"}`;
-
-      if (!grouped[key]) {
-        grouped[key] = [];
-      }
-
-      grouped[key].push(match);
-    });
-
-    return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
+  const sortedGroupMatches = useMemo(() => {
+    return sortByMatchTime(groupMatches, (match) =>
+      `${match.matchday || ""}:${getGroupTitle(match.group)}`
+    );
   }, [groupMatches]);
 
   function moveTeam(groupId: string, index: number, direction: "up" | "down") {
@@ -463,6 +480,7 @@ export default function AdminResultsPage() {
         throw new Error(json?.detail || "Failed to save group match outcome");
       }
 
+      await recalculateScores(token);
       setSuccess("Group match outcome saved and scores recalculated.");
       await loadData();
     } catch (err) {
@@ -507,6 +525,7 @@ export default function AdminResultsPage() {
         throw new Error(json?.detail || "Failed to save match winner");
       }
 
+      await recalculateScores(token);
       setSuccess("Match winner saved and scores recalculated.");
       await loadData();
     } catch (err) {
@@ -559,6 +578,7 @@ export default function AdminResultsPage() {
         throw new Error(json?.detail || "Failed to save group standings");
       }
 
+      await recalculateScores(token);
       setSuccess("Group standings saved and scores recalculated.");
       await loadData();
     } catch (err) {
@@ -661,15 +681,8 @@ export default function AdminResultsPage() {
               </div>
             )}
 
-            {groupMatchesByMatchday.map(([matchdayLabel, matches]) => (
-              <div key={matchdayLabel} className="wc-card p-5">
-                <h2 className="mb-4 flex items-center gap-2 text-2xl font-black">
-                  <CalendarDays className="h-6 w-6 text-blue-300" />
-                  {matchdayLabel}
-                </h2>
-
-                <div className="grid gap-4">
-                  {matches.map((match) => {
+            <div className="grid gap-4">
+              {sortedGroupMatches.map((match) => {
                     const selectedOutcome = outcomeByGroupMatch[match.id];
                     const isSaving = savingKey === `group-match:${match.id}`;
                     const underdogTeamId = getMeaningfulUnderdogTeamId(
@@ -684,10 +697,20 @@ export default function AdminResultsPage() {
                       >
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <p className="text-sm font-bold text-slate-300">
-                              {getGroupTitle(match.group)} ·{" "}
-                              {formatDate(match.match_date)}
-                            </p>
+                            <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-300">
+                              <span className="rounded-full bg-white/10 px-2 py-1 text-xs font-black text-slate-200">
+                                Matchday {match.matchday || "?"}
+                              </span>
+
+                              <span className="rounded-full bg-white/10 px-2 py-1 text-xs font-black text-slate-200">
+                                {getGroupTitle(match.group)}
+                              </span>
+
+                              <span className="flex items-center gap-1">
+                                <CalendarDays className="h-4 w-4" />
+                                {formatDate(match.match_date)}
+                              </span>
+                            </div>
 
                             <p className="wc-muted text-xs">
                               {match.venue || "Venue not set"}
@@ -698,6 +721,13 @@ export default function AdminResultsPage() {
                             <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-black text-green-200">
                               Result: {getOutcomeLabel(match, match.actual_outcome)}
                             </span>
+                          )}
+
+                          {!match.actual_outcome && (
+                            <MatchTimeBadge
+                              matchDate={match.match_date}
+                              status={match.status}
+                            />
                           )}
                         </div>
 
@@ -764,10 +794,8 @@ export default function AdminResultsPage() {
                         </button>
                       </div>
                     );
-                  })}
-                </div>
-              </div>
-            ))}
+              })}
+            </div>
           </div>
         )}
 
@@ -783,16 +811,8 @@ export default function AdminResultsPage() {
               </div>
             )}
 
-            {Object.entries(knockoutMatchesByRound).map(
-              ([roundLabel, matches]) => (
-                <div key={roundLabel} className="wc-card p-5">
-                  <h2 className="mb-4 flex items-center gap-2 text-2xl font-black">
-                    <Shield className="h-6 w-6 text-blue-300" />
-                    {roundLabel}
-                  </h2>
-
-                  <div className="grid gap-4">
-                    {matches.map((match) => {
+            <div className="grid gap-4">
+              {sortedKnockoutMatches.map((match) => {
                       const selectedWinner = winnerByMatch[match.id];
                       const isSaving = savingKey === `match:${match.id}`;
                       const underdogTeamId = getMeaningfulUnderdogTeamId(
@@ -807,9 +827,18 @@ export default function AdminResultsPage() {
                         >
                           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                             <div>
-                              <p className="text-sm font-bold text-slate-300">
-                                {formatDate(match.match_date)}
-                              </p>
+                              <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-300">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-1 text-xs font-black text-slate-200">
+                                  <Shield className="h-3 w-3 text-blue-300" />
+                                  {getRoundLabel(match)}
+                                </span>
+
+                                <span className="flex items-center gap-1">
+                                  <CalendarDays className="h-4 w-4" />
+                                  {formatDate(match.match_date)}
+                                </span>
+                              </div>
+
                               <p className="wc-muted text-xs">
                                 {match.venue || "Venue not set"}
                               </p>
@@ -819,6 +848,13 @@ export default function AdminResultsPage() {
                               <span className="rounded-full bg-green-500/15 px-3 py-1 text-xs font-black text-green-200">
                                 Winner: {match.actual_winner_team.name}
                               </span>
+                            )}
+
+                            {!match.actual_winner_team && (
+                              <MatchTimeBadge
+                                matchDate={match.match_date}
+                                status={match.status}
+                              />
                             )}
                           </div>
 
@@ -872,11 +908,8 @@ export default function AdminResultsPage() {
                           </button>
                         </div>
                       );
-                    })}
-                  </div>
-                </div>
-              )
-            )}
+              })}
+            </div>
           </div>
         )}
 

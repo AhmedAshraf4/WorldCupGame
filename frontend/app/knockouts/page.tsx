@@ -5,13 +5,21 @@ import { useRouter } from "next/navigation";
 import {
   CalendarDays,
   CheckCircle2,
+  Clock,
   Loader2,
+  Lock,
   Shield,
   Trophy,
+  Unlock,
 } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
 import {
+  getMatchTimestamp,
+  MatchTimeBadge,
+} from "@/components/MatchTimeBadge";
+import {
+  getLockedButtonLabel,
   mapLocksByKey,
   type LockStatus,
 } from "@/lib/locks";
@@ -44,6 +52,7 @@ type KnockoutMatch = {
   round?: string | null;
   stage?: string | null;
   match_date?: string | null;
+  status?: string | null;
   venue?: string | null;
   team_a_id: string;
   team_b_id: string;
@@ -59,6 +68,16 @@ const KNOCKOUT_LOCK_KEYS: Record<string, string> = {
   SEMI_FINAL: "KNOCKOUT_PREDICTIONS_SEMI_FINAL",
   FINAL: "KNOCKOUT_PREDICTIONS_FINAL",
 };
+
+const ROUND_OPTIONS = [
+  { key: "ROUND_OF_32", shortLabel: "RO32", label: "Round of 32" },
+  { key: "ROUND_OF_16", shortLabel: "RO16", label: "Round of 16" },
+  { key: "QUARTER_FINAL", shortLabel: "QF", label: "Quarterfinals" },
+  { key: "SEMI_FINAL", shortLabel: "SF", label: "Semifinals" },
+  { key: "FINAL", shortLabel: "Final", label: "Final" },
+] as const;
+
+type RoundKey = (typeof ROUND_OPTIONS)[number]["key"];
 
 function normalizeRound(value?: string | null) {
   const text = String(value || "")
@@ -78,6 +97,14 @@ function getRoundLabel(match: KnockoutMatch) {
   return match.round_name || match.stage || match.round || "Knockout";
 }
 
+function getRoundKey(match: KnockoutMatch) {
+  return normalizeRound(getRoundLabel(match));
+}
+
+function getRoundOption(key: RoundKey) {
+  return ROUND_OPTIONS.find((round) => round.key === key) || ROUND_OPTIONS[0];
+}
+
 function formatMatchDate(value?: string | null) {
   if (!value) return "Date not set";
 
@@ -95,8 +122,88 @@ function formatMatchDate(value?: string | null) {
   });
 }
 
+function getSortedMatches(matches: KnockoutMatch[]) {
+  return [...matches].sort((a, b) => {
+    const dateDifference =
+      getMatchTimestamp(a.match_date) - getMatchTimestamp(b.match_date);
+
+    if (dateDifference !== 0) return dateDifference;
+
+    const roundDifference = getRoundLabel(a).localeCompare(getRoundLabel(b));
+
+    if (roundDifference !== 0) return roundDifference;
+
+    return (a.team_a?.name || "").localeCompare(b.team_a?.name || "");
+  });
+}
+
 function isLockGateOpen(lock?: LockStatus | null) {
   return !lock || lock.is_open || lock.reason === "DEADLINE_PASSED";
+}
+
+function formatLockDate(value?: string | null) {
+  if (!value) return "Not set";
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function getLockMessage(
+  lock?: LockStatus | null,
+  hasConfirmedMatches = false
+) {
+  if (hasConfirmedMatches) {
+    return "This round is open because at least one match is confirmed. Each game closes at kickoff.";
+  }
+
+  if (!lock) return "No lock configured. This round is open.";
+
+  if (lock.is_open) return "This round is open for predictions.";
+
+  if (lock.reason === "DEADLINE_PASSED") {
+    return "Each game now closes at its own kickoff time.";
+  }
+
+  if (lock.reason === "NOT_OPEN_YET") {
+    return `This round is not open yet. Opens at ${formatLockDate(
+      lock.open_at
+    )}.`;
+  }
+
+  return "This round is manually locked by admin.";
+}
+
+function getLockBadge(lock?: LockStatus | null, hasConfirmedMatches = false) {
+  if (
+    hasConfirmedMatches ||
+    !lock ||
+    lock.is_open ||
+    lock.reason === "DEADLINE_PASSED"
+  ) {
+    return {
+      label: "Open",
+      className: "border-green-400/40 bg-green-500/15 text-green-200",
+      Icon: Unlock,
+    };
+  }
+
+  if (lock.reason === "NOT_OPEN_YET") {
+    return {
+      label: "Not Open",
+      className: "border-yellow-400/40 bg-yellow-500/15 text-yellow-200",
+      Icon: Clock,
+    };
+  }
+
+  return {
+    label: "Locked",
+    className: "border-red-400/40 bg-red-500/15 text-red-200",
+    Icon: Lock,
+  };
 }
 
 function isMatchDeadlineOpen(match: KnockoutMatch) {
@@ -174,6 +281,7 @@ export default function KnockoutsPage() {
   const [token, setToken] = useState<string | null>(null);
   const [matches, setMatches] = useState<KnockoutMatch[]>([]);
   const [locksByKey, setLocksByKey] = useState<Record<string, LockStatus>>({});
+  const [activeRound, setActiveRound] = useState<RoundKey>("ROUND_OF_32");
   const [selectedWinnerByMatchId, setSelectedWinnerByMatchId] = useState<
     Record<string, string>
   >({});
@@ -224,8 +332,20 @@ export default function KnockoutsPage() {
         }
 
         const loadedMatches: KnockoutMatch[] = json.data || [];
+        const nextLocksByKey = mapLocksByKey(locksJson?.data || []);
+
         setMatches(loadedMatches);
-        setLocksByKey(mapLocksByKey(locksJson?.data || []));
+        setLocksByKey(nextLocksByKey);
+
+        const firstOpenRound =
+          ROUND_OPTIONS.find((round) => {
+            return loadedMatches.some(
+              (match) => getRoundKey(match) === round.key
+            );
+          }) ||
+          ROUND_OPTIONS[0];
+
+        setActiveRound(firstOpenRound.key);
 
         const savedSelections: Record<string, string> = {};
 
@@ -247,39 +367,92 @@ export default function KnockoutsPage() {
     loadData();
   }, [router]);
 
-  const matchesByRound = useMemo(() => {
-    const grouped: Record<string, KnockoutMatch[]> = {};
-
-    matches.forEach((match) => {
-      const round = getRoundLabel(match);
-
-      if (!grouped[round]) {
-        grouped[round] = [];
-      }
-
-      grouped[round].push(match);
-    });
-
-    return grouped;
+  const roundCounts = useMemo(() => {
+    return ROUND_OPTIONS.reduce<Record<RoundKey, number>>((counts, round) => {
+      counts[round.key] = matches.filter(
+        (match) => getRoundKey(match) === round.key
+      ).length;
+      return counts;
+    }, {} as Record<RoundKey, number>);
   }, [matches]);
 
-  const selectedCount = matches.filter(
+  const activeMatches = useMemo(() => {
+    return getSortedMatches(
+      matches.filter((match) => getRoundKey(match) === activeRound)
+    );
+  }, [matches, activeRound]);
+
+  const activeRoundOption = getRoundOption(activeRound);
+  const activeLock = locksByKey[KNOCKOUT_LOCK_KEYS[activeRound]];
+  const activeRoundHasConfirmedMatches = activeMatches.length > 0;
+  const activeGateOpen =
+    activeRoundHasConfirmedMatches || isLockGateOpen(activeLock);
+
+  const activeSelectedCount = activeMatches.filter(
     (match) => selectedWinnerByMatchId[match.id]
   ).length;
 
-  function getMatchLock(match: KnockoutMatch) {
-    const round = normalizeRound(getRoundLabel(match));
-    return round ? locksByKey[KNOCKOUT_LOCK_KEYS[round]] : null;
+  const activeEditableSelectedCount = activeMatches.filter(
+    (match) => isMatchOpen(match) && selectedWinnerByMatchId[match.id]
+  ).length;
+
+  const totalSelectedCount = matches.filter(
+    (match) => selectedWinnerByMatchId[match.id]
+  ).length;
+
+  const totalMatchCount = matches.length;
+
+  function isRoundGateOpen(round: string | null) {
+    if (!round) return true;
+
+    const hasConfirmedMatches = matches.some(
+      (match) => getRoundKey(match) === round
+    );
+    const lock = locksByKey[KNOCKOUT_LOCK_KEYS[round]];
+
+    return hasConfirmedMatches || isLockGateOpen(lock);
   }
 
   function isMatchOpen(match: KnockoutMatch) {
-    const lock = getMatchLock(match);
-    return isLockGateOpen(lock) && isMatchDeadlineOpen(match);
+    return isRoundGateOpen(getRoundKey(match)) && isMatchDeadlineOpen(match);
   }
 
-  const editableSelectedCount = matches.filter(
-    (match) => isMatchOpen(match) && selectedWinnerByMatchId[match.id]
-  ).length;
+  const editableSelectedCount = activeEditableSelectedCount;
+
+  const selectedCount = activeSelectedCount;
+  const matchCount = activeMatches.length;
+
+  const activeLockMessage = getLockMessage(
+    activeLock,
+    activeRoundHasConfirmedMatches
+  );
+
+  const activeSaveDisabled =
+    saving ||
+    editableSelectedCount === 0 ||
+    !activeGateOpen ||
+    activeMatches.length === 0;
+
+  const activeSaveLabel = !activeGateOpen
+    ? getLockedButtonLabel(activeLock)
+    : editableSelectedCount === 0
+    ? "Choose a prediction first"
+    : "Save";
+
+  const roundButtons = ROUND_OPTIONS.map((round) => {
+    const lock = locksByKey[KNOCKOUT_LOCK_KEYS[round.key]];
+    const count = roundCounts[round.key] || 0;
+    const badge = getLockBadge(lock, count > 0);
+    const BadgeIcon = badge.Icon;
+
+    return {
+      ...round,
+      badge,
+      BadgeIcon,
+      isActive: activeRound === round.key,
+      count,
+    };
+  });
 
   function selectWinner(matchId: string, teamId: string) {
     setSelectedWinnerByMatchId((previous) => ({
@@ -299,7 +472,12 @@ export default function KnockoutsPage() {
       setError("");
       setSuccess("");
 
-      const predictions = matches
+      if (!activeGateOpen) {
+        setError(activeLockMessage);
+        return;
+      }
+
+      const predictions = activeMatches
         .filter((match) => isMatchOpen(match) && selectedWinnerByMatchId[match.id])
         .map((match) => ({
           match_id: match.id,
@@ -325,7 +503,7 @@ export default function KnockoutsPage() {
         throw new Error(json?.detail || "Failed to save knockout predictions");
       }
 
-      setSuccess("Knockout predictions saved successfully.");
+      setSuccess(`${activeRoundOption.label} predictions saved successfully.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -350,26 +528,63 @@ export default function KnockoutsPage() {
           </p>
         </div>
 
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {roundButtons.map((round) => (
+            <button
+              key={round.key}
+              onClick={() => {
+                setActiveRound(round.key);
+                setError("");
+                setSuccess("");
+              }}
+              className={`rounded-2xl border p-3 text-left transition ${
+                round.isActive
+                  ? "border-blue-400 bg-blue-500/20"
+                  : "border-white/10 bg-white/5 hover:bg-white/10"
+              }`}
+            >
+              <p className="text-sm font-black text-white">
+                {round.shortLabel}
+              </p>
+
+              <p className="mt-1 text-[11px] font-bold text-slate-400">
+                {round.count} matches
+              </p>
+
+              <span
+                className={`mt-2 inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black ${round.badge.className}`}
+              >
+                <round.BadgeIcon className="h-3 w-3" />
+                {round.badge.label}
+              </span>
+            </button>
+          ))}
+        </div>
+
         <div className="wc-card mb-5 p-4 md:p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-bold text-white">
-                {selectedCount} / {matches.length} selected
+                {activeRoundOption.label}: {selectedCount} / {matchCount}{" "}
+                selected
               </p>
               <p className="mt-1 text-xs text-slate-400">
-                These predictions will score when the API result is synced.
+                {activeLockMessage}
+              </p>
+              <p className="mt-1 text-[11px] font-bold text-slate-500">
+                Total: {totalSelectedCount} / {totalMatchCount} selected
               </p>
             </div>
 
             <button
               onClick={savePredictions}
-              disabled={saving || editableSelectedCount === 0}
+              disabled={activeSaveDisabled}
               className="wc-button min-w-24 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? (
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               ) : (
-                editableSelectedCount === 0 ? "Choose a prediction first" : "Save"
+                activeSaveLabel
               )}
             </button>
           </div>
@@ -408,89 +623,95 @@ export default function KnockoutsPage() {
               sync fills the knockout teams, this page will work automatically.
             </p>
           </div>
+        ) : activeMatches.length === 0 ? (
+          <div className="wc-card py-10 text-center">
+            <p className="text-lg font-black text-white">
+              No {activeRoundOption.label} matches found
+            </p>
+            <p className="mt-2 text-sm text-slate-400">
+              This round will appear here once the matches are available.
+            </p>
+          </div>
         ) : (
           <div className="space-y-6">
-            {Object.entries(matchesByRound).map(([round, roundMatches]) => (
-              <section key={round} className="wc-card">
-                <div className="mb-4 flex items-center gap-2">
-                  <Shield className="h-5 w-5 text-yellow-300" />
-                  <h2 className="text-xl font-black text-white">{round}</h2>
+            {activeMatches.map((match) => {
+              const selectedWinner = selectedWinnerByMatchId[match.id];
+              const matchOpen = isMatchOpen(match);
+              const deadlinePassed = !isMatchDeadlineOpen(match);
+              const underdogTeamId = getMeaningfulUnderdogTeamId(
+                match.team_a,
+                match.team_b
+              );
+
+              return (
+                <div
+                  key={match.id}
+                  className="wc-card rounded-3xl border border-white/10 bg-black/20 p-4"
+                >
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-400">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 font-black text-slate-200">
+                        <Shield className="h-3 w-3 text-yellow-300" />
+                        {getRoundLabel(match)}
+                      </span>
+
+                      <span className="flex items-center gap-1">
+                        <CalendarDays className="h-4 w-4" />
+                        {formatMatchDate(match.match_date)}
+                      </span>
+                    </div>
+
+                    <MatchTimeBadge
+                      matchDate={match.match_date}
+                      status={match.status}
+                    />
+                  </div>
+
+                  {match.venue && (
+                    <p className="mb-4 text-xs font-bold text-slate-500">
+                      {match.venue}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                    <TeamOption
+                      team={match.team_a}
+                      selected={selectedWinner === match.team_a_id}
+                      isUnderdog={underdogTeamId === match.team_a_id}
+                      disabled={!matchOpen}
+                      onClick={() => selectWinner(match.id, match.team_a_id)}
+                    />
+
+                    <div className="rounded-full bg-white/10 px-3 py-2 text-xs font-black text-slate-300">
+                      VS
+                    </div>
+
+                    <TeamOption
+                      team={match.team_b}
+                      selected={selectedWinner === match.team_b_id}
+                      isUnderdog={underdogTeamId === match.team_b_id}
+                      disabled={!matchOpen}
+                      onClick={() => selectWinner(match.id, match.team_b_id)}
+                    />
+                  </div>
+
+                  {!matchOpen && (
+                    <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-200">
+                      {deadlinePassed
+                        ? "Prediction closed. This game has already kicked off."
+                        : "Predictions are locked for this round."}
+                    </div>
+                  )}
+
+                  {underdogTeamId && (
+                    <div className="mt-3 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
+                      Underdog winner pick scores round points x2 if correct,
+                      x-2 if wrong.
+                    </div>
+                  )}
                 </div>
-
-                <div className="space-y-4">
-                  {roundMatches.map((match) => {
-                    const selectedWinner = selectedWinnerByMatchId[match.id];
-                    const matchOpen = isMatchOpen(match);
-                    const deadlinePassed = !isMatchDeadlineOpen(match);
-                    const underdogTeamId = getMeaningfulUnderdogTeamId(
-                      match.team_a,
-                      match.team_b
-                    );
-
-                    return (
-                      <div
-                        key={match.id}
-                        className="rounded-3xl border border-white/10 bg-black/20 p-4"
-                      >
-                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
-                            <CalendarDays className="h-4 w-4" />
-                            {formatMatchDate(match.match_date)}
-                          </div>
-
-                          {match.venue && (
-                            <p className="text-xs font-bold text-slate-500">
-                              {match.venue}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                          <TeamOption
-                            team={match.team_a}
-                            selected={selectedWinner === match.team_a_id}
-                            isUnderdog={underdogTeamId === match.team_a_id}
-                            disabled={!matchOpen}
-                            onClick={() =>
-                              selectWinner(match.id, match.team_a_id)
-                            }
-                          />
-
-                          <div className="rounded-full bg-white/10 px-3 py-2 text-xs font-black text-slate-300">
-                            VS
-                          </div>
-
-                          <TeamOption
-                            team={match.team_b}
-                            selected={selectedWinner === match.team_b_id}
-                            isUnderdog={underdogTeamId === match.team_b_id}
-                            disabled={!matchOpen}
-                            onClick={() =>
-                              selectWinner(match.id, match.team_b_id)
-                            }
-                          />
-                        </div>
-
-                        {!matchOpen && (
-                          <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-200">
-                            {deadlinePassed
-                              ? "Prediction closed. This game has already kicked off."
-                              : "Predictions are locked for this round."}
-                          </div>
-                        )}
-
-                        {underdogTeamId && (
-                          <div className="mt-3 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
-                            Underdog winner pick scores round points x2 if
-                            correct, x-2 if wrong.
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

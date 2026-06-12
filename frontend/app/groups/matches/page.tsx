@@ -14,6 +14,10 @@ import {
 
 import { supabase } from "@/lib/supabase/client";
 import { BottomNav } from "@/components/bottomnav";
+import {
+  getMatchTimestamp,
+  MatchTimeBadge,
+} from "@/components/MatchTimeBadge";
 import { getLockedButtonLabel, mapLocksByKey } from "@/lib/locks";
 import {
   formatTeamRank,
@@ -140,6 +144,16 @@ function getLockBadge(lock?: LockStatus) {
     className: "border-red-400/40 bg-red-500/15 text-red-200",
     Icon: Lock,
   };
+}
+
+function getMatchTime(match: Match) {
+  return getMatchTimestamp(match.match_date);
+}
+
+function getGroupLabel(group?: Group | null) {
+  if (!group) return "Group";
+
+  return group.name || (group.code ? `Group ${group.code}` : "Group");
 }
 
 function isLockGateOpen(lock?: LockStatus) {
@@ -336,24 +350,22 @@ export default function GroupMatchesPage() {
   }, [matches]);
 
   const activeMatches = useMemo(() => {
-    return matches.filter((match) => match.matchday === activeMatchday);
+    return matches
+      .filter((match) => match.matchday === activeMatchday)
+      .sort((a, b) => {
+        const dateDifference = getMatchTime(a) - getMatchTime(b);
+
+        if (dateDifference !== 0) return dateDifference;
+
+        const groupDifference = (a.group?.code || "").localeCompare(
+          b.group?.code || ""
+        );
+
+        if (groupDifference !== 0) return groupDifference;
+
+        return a.team_a.name.localeCompare(b.team_a.name);
+      });
   }, [matches, activeMatchday]);
-
-  const groupedMatches = useMemo(() => {
-    const grouped: Record<string, Match[]> = {};
-
-    activeMatches.forEach((match) => {
-      const code = match.group?.code || "Other";
-
-      if (!grouped[code]) {
-        grouped[code] = [];
-      }
-
-      grouped[code].push(match);
-    });
-
-    return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
-  }, [activeMatches]);
 
   const activeSelectedCount = activeMatches.filter(
     (match) => selectedOutcomes[match.id]
@@ -538,116 +550,109 @@ export default function GroupMatchesPage() {
           </div>
         ) : (
           <div className="space-y-5 md:grid md:grid-cols-2 md:gap-5 md:space-y-0">
-            {groupedMatches.map(([groupCode, groupMatches]) => (
-              <section key={groupCode} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-black text-white">
-                    Group {groupCode}
-                  </h2>
+            {activeMatches.map((match) => {
+              const selected = selectedOutcomes[match.id];
+              const underdogTeamId = getMeaningfulUnderdogTeamId(
+                match.team_a,
+                match.team_b
+              );
+              const matchOpen = isMatchPredictionOpen(match, activeLock);
+              const deadlinePassed = !isMatchDeadlineOpen(match);
 
-                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-slate-300">
-                    {groupMatches.length} matches
-                  </span>
-                </div>
+              return (
+                <div key={match.id} className="wc-card space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-white/10 px-2 py-1 font-black text-slate-200">
+                        {getGroupLabel(match.group)}
+                      </span>
 
-                {groupMatches.map((match) => {
-                  const selected = selectedOutcomes[match.id];
-                  const underdogTeamId = getMeaningfulUnderdogTeamId(
-                    match.team_a,
-                    match.team_b
-                  );
-                  const matchOpen = isMatchPredictionOpen(match, activeLock);
-                  const deadlinePassed = !isMatchDeadlineOpen(match);
-
-                  return (
-                    <div key={match.id} className="wc-card space-y-4">
-                      <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
-                        <div className="flex items-center gap-1">
-                          <CalendarDays className="h-4 w-4" />
-                          {formatMatchDate(match.match_date)}
-                        </div>
-
-                        <span className="rounded-full bg-white/10 px-2 py-1 font-bold">
-                          {match.status || "SCHEDULED"}
-                        </span>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="rounded-2xl bg-white/5 p-3">
-                          <TeamLabel
-                            team={match.team_a}
-                            isUnderdog={underdogTeamId === match.team_a.id}
-                          />
-                        </div>
-
-                        <div className="text-center text-xs font-black uppercase tracking-[0.3em] text-slate-500">
-                          vs
-                        </div>
-
-                        <div className="rounded-2xl bg-white/5 p-3">
-                          <TeamLabel
-                            team={match.team_b}
-                            isUnderdog={underdogTeamId === match.team_b.id}
-                          />
-                        </div>
-                      </div>
-
-                      {underdogTeamId && (
-                        <div className="rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
-                          Underdog win pick scores +2 if correct, -2 if wrong.
-                        </div>
-                      )}
-
-                      {!matchOpen && (
-                        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-200">
-                          {deadlinePassed
-                            ? "Prediction closed. This game has already kicked off."
-                            : getLockMessage(activeLock)}
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-3 gap-2">
-                        <OutcomeButton
-                          label={`${match.team_a.name} win`}
-                          active={selected === "TEAM_A_WIN"}
-                          disabled={!matchOpen}
-                          onClick={() =>
-                            setSelectedOutcomes((previous) => ({
-                              ...previous,
-                              [match.id]: "TEAM_A_WIN",
-                            }))
-                          }
-                        />
-
-                        <OutcomeButton
-                          label="Draw"
-                          active={selected === "DRAW"}
-                          disabled={!matchOpen}
-                          onClick={() =>
-                            setSelectedOutcomes((previous) => ({
-                              ...previous,
-                              [match.id]: "DRAW",
-                            }))
-                          }
-                        />
-
-                        <OutcomeButton
-                          label={`${match.team_b.name} win`}
-                          active={selected === "TEAM_B_WIN"}
-                          disabled={!matchOpen}
-                          onClick={() =>
-                            setSelectedOutcomes((previous) => ({
-                              ...previous,
-                              [match.id]: "TEAM_B_WIN",
-                            }))
-                          }
-                        />
-                      </div>
+                      <span className="flex items-center gap-1">
+                        <CalendarDays className="h-4 w-4" />
+                        {formatMatchDate(match.match_date)}
+                      </span>
                     </div>
-                  );
-                })}
-              </section>
-            ))}
+
+                    <MatchTimeBadge
+                      matchDate={match.match_date}
+                      status={match.status}
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded-2xl bg-white/5 p-3">
+                      <TeamLabel
+                        team={match.team_a}
+                        isUnderdog={underdogTeamId === match.team_a.id}
+                      />
+                    </div>
+
+                    <div className="text-center text-xs font-black uppercase tracking-[0.3em] text-slate-500">
+                      vs
+                    </div>
+
+                    <div className="rounded-2xl bg-white/5 p-3">
+                      <TeamLabel
+                        team={match.team_b}
+                        isUnderdog={underdogTeamId === match.team_b.id}
+                      />
+                    </div>
+                  </div>
+
+                  {underdogTeamId && (
+                    <div className="rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
+                      Underdog win pick scores +2 if correct, -2 if wrong.
+                    </div>
+                  )}
+
+                  {!matchOpen && (
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-200">
+                      {deadlinePassed
+                        ? "Prediction closed. This game has already kicked off."
+                        : getLockMessage(activeLock)}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <OutcomeButton
+                      label={`${match.team_a.name} win`}
+                      active={selected === "TEAM_A_WIN"}
+                      disabled={!matchOpen}
+                      onClick={() =>
+                        setSelectedOutcomes((previous) => ({
+                          ...previous,
+                          [match.id]: "TEAM_A_WIN",
+                        }))
+                      }
+                    />
+
+                    <OutcomeButton
+                      label="Draw"
+                      active={selected === "DRAW"}
+                      disabled={!matchOpen}
+                      onClick={() =>
+                        setSelectedOutcomes((previous) => ({
+                          ...previous,
+                          [match.id]: "DRAW",
+                        }))
+                      }
+                    />
+
+                    <OutcomeButton
+                      label={`${match.team_b.name} win`}
+                      active={selected === "TEAM_B_WIN"}
+                      disabled={!matchOpen}
+                      onClick={() =>
+                        setSelectedOutcomes((previous) => ({
+                          ...previous,
+                          [match.id]: "TEAM_B_WIN",
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

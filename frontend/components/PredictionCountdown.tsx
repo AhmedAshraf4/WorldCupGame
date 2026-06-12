@@ -2,14 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-function formatDuration(target: string | null | undefined, closedText: string) {
+function formatDuration(
+  target: string | null | undefined,
+  closedText: string,
+  now: number
+) {
   if (!target) return closedText;
 
   const targetTime = new Date(target).getTime();
 
   if (Number.isNaN(targetTime)) return closedText;
 
-  const diff = Math.max(0, targetTime - Date.now());
+  const diff = Math.max(0, targetTime - now);
 
   if (diff <= 0) return closedText;
 
@@ -20,14 +24,16 @@ function formatDuration(target: string | null | undefined, closedText: string) {
   const seconds = totalSeconds % 60;
 
   if (days > 0) {
-    return `${days}d ${String(hours).padStart(2, "0")}h`;
+    return `${days}d ${String(hours).padStart(2, "0")}h ${String(
+      minutes
+    ).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
   }
 
   if (hours > 0) {
     return `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(
       2,
       "0"
-    )}m`;
+    )}m ${String(seconds).padStart(2, "0")}s`;
   }
 
   return `${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(
@@ -52,7 +58,7 @@ export function usePredictionCountdown(
     return () => window.clearInterval(interval);
   }, [target]);
 
-  return useMemo(() => formatDuration(target, closedText), [
+  return useMemo(() => formatDuration(target, closedText, now), [
     target,
     closedText,
     now,

@@ -7,6 +7,10 @@ import { CheckCircle2, Loader2, Star, Trophy } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
 import {
+  getMatchTimestamp,
+  MatchTimeBadge,
+} from "@/components/MatchTimeBadge";
+import {
   getLockedButtonLabel,
   mapLocksByKey,
   type LockStatus,
@@ -71,6 +75,12 @@ const ROUND_SHORT_LABELS: Record<KnockoutWildcardRound, string> = {
 
 function getMatchDateFromOption(option?: KnockoutPredictionOption | null) {
   const value = option?.match?.match_date;
+
+  return typeof value === "string" ? value : null;
+}
+
+function getMatchStatusFromOption(option?: KnockoutPredictionOption | null) {
+  const value = option?.match?.status;
 
   return typeof value === "string" ? value : null;
 }
@@ -275,7 +285,20 @@ export default function KnockoutWildcardsPage() {
           );
         }
 
-        const loadedGroups: WildcardOptionGroup[] = optionsJson.data || [];
+        const loadedGroups: WildcardOptionGroup[] = (optionsJson.data || []).map(
+          (group: WildcardOptionGroup) => ({
+            ...group,
+            options: [...(group.options || [])].sort((a, b) => {
+              const dateDifference =
+                getMatchTimestamp(getMatchDateFromOption(a)) -
+                getMatchTimestamp(getMatchDateFromOption(b));
+
+              if (dateDifference !== 0) return dateDifference;
+
+              return (a.team?.name || "").localeCompare(b.team?.name || "");
+            }),
+          })
+        );
         const savedWildcards: SavedKnockoutWildcard[] = savedJson.data || [];
 
         setOptionGroups(loadedGroups);
@@ -643,9 +666,16 @@ function confirmCurrentWildcard() {
                         </div>
                       </div>
 
-                      <p className="wc-muted mb-4 text-sm">
-                        One wildcard only for this round.
-                      </p>
+                      <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+                        <p className="wc-muted text-sm">
+                          One wildcard only for this round.
+                        </p>
+
+                        <MatchTimeBadge
+                          matchDate={getMatchDateFromOption(currentPrediction)}
+                          status={getMatchStatusFromOption(currentPrediction)}
+                        />
+                      </div>
 
                       <div
                         className="relative mx-auto mb-5 flex h-64 w-full items-center justify-center overflow-hidden"
