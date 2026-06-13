@@ -221,20 +221,173 @@ def load_group_ids_by_code() -> dict[str, str]:
     }
 
 
-def load_existing_matches_by_api_id() -> dict[str, dict[str, Any]]:
+def get_match_natural_key(match: dict[str, Any]) -> tuple | None:
+    stage = match.get("stage")
+    group_id = match.get("group_id")
+    team_a_id = match.get("team_a_id")
+    team_b_id = match.get("team_b_id")
+
+    if not stage or not team_a_id or not team_b_id:
+        return None
+
+    return (
+        str(stage),
+        str(group_id or ""),
+        str(team_a_id),
+        str(team_b_id),
+    )
+
+
+def load_existing_matches() -> list[dict[str, Any]]:
     result = (
         supabase
         .table("matches")
-        .select("id,api_match_id,is_manual_override")
-        .eq("api_provider", API_PROVIDER)
+        .select(
+            "id,api_provider,api_match_id,is_manual_override,stage,group_id,"
+            "team_a_id,team_b_id,actual_outcome,actual_winner_team_id,status"
+        )
         .execute()
     )
-    rows = result.data or []
 
+    return result.data or []
+
+
+def index_matches_by_api_id(matches: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {
         str(row["api_match_id"]): row
-        for row in rows
-        if row.get("api_match_id")
+        for row in matches
+        if row.get("api_provider") == API_PROVIDER and row.get("api_match_id")
+    }
+
+
+def group_matches_by_natural_key(
+    matches: list[dict[str, Any]],
+) -> dict[tuple, list[dict[str, Any]]]:
+    grouped = {}
+
+    for match in matches:
+        if match.get("status") == "DUPLICATE":
+            continue
+
+        key = get_match_natural_key(match)
+
+        if not key:
+            continue
+
+        if key not in grouped:
+            grouped[key] = []
+
+        grouped[key].append(match)
+
+    return grouped
+
+
+def get_preferred_natural_match(matches: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not matches:
+        return None
+
+    return sorted(
+        matches,
+        key=lambda match: (
+            0 if match.get("api_match_id") else 1,
+            0 if not match.get("is_manual_override") else 1,
+            str(match.get("id") or ""),
+        ),
+    )[0]
+
+
+def migrate_prediction_references(
+    table_name: str,
+    source_match_id: str,
+    target_match_id: str,
+) -> dict[str, int]:
+    source_result = (
+        supabase
+        .table(table_name)
+        .select("id,user_id")
+        .eq("match_id", source_match_id)
+        .execute()
+    )
+    source_rows = source_result.data or []
+
+    if not source_rows:
+        return {"moved": 0, "deleted_conflicts": 0}
+
+    target_result = (
+        supabase
+        .table(table_name)
+        .select("user_id")
+        .eq("match_id", target_match_id)
+        .execute()
+    )
+
+    target_user_ids = {
+        row.get("user_id")
+        for row in target_result.data or []
+        if row.get("user_id")
+    }
+
+    moved = 0
+    deleted_conflicts = 0
+
+    for row in source_rows:
+        row_id = row.get("id")
+        user_id = row.get("user_id")
+
+        if not row_id:
+            continue
+
+        if user_id in target_user_ids:
+            (
+                supabase
+                .table(table_name)
+                .delete()
+                .eq("id", row_id)
+                .execute()
+            )
+            deleted_conflicts += 1
+            continue
+
+        (
+            supabase
+            .table(table_name)
+            .update({"match_id": target_match_id})
+            .eq("id", row_id)
+            .execute()
+        )
+        moved += 1
+
+    return {"moved": moved, "deleted_conflicts": deleted_conflicts}
+
+
+def migrate_duplicate_match(source_match_id: str, target_match_id: str) -> dict[str, Any]:
+    group_result = migrate_prediction_references(
+        "group_match_predictions",
+        source_match_id,
+        target_match_id,
+    )
+    knockout_result = migrate_prediction_references(
+        "knockout_predictions",
+        source_match_id,
+        target_match_id,
+    )
+
+    (
+        supabase
+        .table("matches")
+        .update({
+            "stage": "DUPLICATE",
+            "status": "DUPLICATE",
+        })
+        .eq("id", source_match_id)
+        .execute()
+    )
+
+    return {
+        "source_match_id": source_match_id,
+        "target_match_id": target_match_id,
+        "group_match_predictions": group_result,
+        "knockout_predictions": knockout_result,
     }
 
 
@@ -302,20 +455,24 @@ async def sync_world_cup_matches() -> dict[str, Any]:
     logger.warning("football-data.org Supabase sync preload started.")
     team_ids_by_name = load_team_ids_by_name()
     group_ids_by_code = load_group_ids_by_code()
-    existing_matches_by_api_id = load_existing_matches_by_api_id()
+    existing_matches = load_existing_matches()
+    existing_matches_by_api_id = index_matches_by_api_id(existing_matches)
+    existing_matches_by_natural_key = group_matches_by_natural_key(existing_matches)
     logger.warning(
         "football-data.org Supabase sync preload completed: teams=%s groups=%s existing_matches=%s",
         len(team_ids_by_name),
         len(group_ids_by_code),
-        len(existing_matches_by_api_id),
+        len(existing_matches),
     )
 
     synced = 0
     skipped_missing_team = 0
-    skipped_manual_override = 0
     skipped_missing_api_id = 0
+    protected_manual_result = 0
+    duplicate_matches_repaired = 0
 
     missing_teams: list[dict[str, str | None]] = []
+    repaired_duplicates: list[dict[str, Any]] = []
 
     for index, api_match in enumerate(api_matches, start=1):
         if index == 1 or index % 10 == 0 or index == len(api_matches):
@@ -355,12 +512,6 @@ async def sync_world_cup_matches() -> dict[str, Any]:
             })
             continue
 
-        existing_match = existing_matches_by_api_id.get(api_match_id)
-
-        if existing_match and existing_match.get("is_manual_override"):
-            skipped_manual_override += 1
-            continue
-
         api_stage = api_match.get("stage")
         app_stage = map_api_stage_to_app_stage(api_stage)
         actual_outcome = get_outcome_from_api_match(api_match)
@@ -392,14 +543,71 @@ async def sync_world_cup_matches() -> dict[str, Any]:
             ),
         }
 
+        existing_match = existing_matches_by_api_id.get(api_match_id)
+        natural_key = get_match_natural_key(row)
+        natural_matches = (
+            existing_matches_by_natural_key.get(natural_key, [])
+            if natural_key
+            else []
+        )
+        natural_match = get_preferred_natural_match(natural_matches)
+
+        if existing_match and natural_matches:
+            for duplicate_match in natural_matches:
+                if duplicate_match.get("id") == existing_match.get("id"):
+                    continue
+
+                duplicate_matches_repaired += 1
+                repaired_duplicates.append(
+                    migrate_duplicate_match(
+                        source_match_id=duplicate_match["id"],
+                        target_match_id=existing_match["id"],
+                    )
+                )
+
+            if natural_key:
+                existing_matches_by_natural_key[natural_key] = [existing_match]
+
+        if not existing_match and natural_match:
+            existing_match = natural_match
+
+            for duplicate_match in natural_matches:
+                if duplicate_match.get("id") == existing_match.get("id"):
+                    continue
+
+                duplicate_matches_repaired += 1
+                repaired_duplicates.append(
+                    migrate_duplicate_match(
+                        source_match_id=duplicate_match["id"],
+                        target_match_id=existing_match["id"],
+                    )
+                )
+
+            if natural_key:
+                existing_matches_by_natural_key[natural_key] = [existing_match]
+
+        update_row = dict(row)
+
         if existing_match:
+            if existing_match.get("is_manual_override"):
+                protected_manual_result += 1
+                update_row.pop("actual_outcome", None)
+                update_row.pop("actual_winner_team_id", None)
+                update_row.pop("status", None)
+
             (
                 supabase
                 .table("matches")
-                .update(row)
+                .update(update_row)
                 .eq("id", existing_match["id"])
                 .execute()
             )
+
+            existing_match.update(update_row)
+            existing_matches_by_api_id[api_match_id] = existing_match
+
+            if natural_key:
+                existing_matches_by_natural_key[natural_key] = [existing_match]
         else:
             insert_result = supabase.table("matches").insert(row).execute()
             inserted_match = (insert_result.data or [{}])[0]
@@ -411,6 +619,9 @@ async def sync_world_cup_matches() -> dict[str, Any]:
                     "is_manual_override": False,
                 }
 
+                if natural_key:
+                    existing_matches_by_natural_key[natural_key] = [inserted_match]
+
         synced += 1
 
     result = {
@@ -418,8 +629,10 @@ async def sync_world_cup_matches() -> dict[str, Any]:
         "api_matches_found": len(api_matches),
         "synced": synced,
         "skipped_missing_team": skipped_missing_team,
-        "skipped_manual_override": skipped_manual_override,
         "skipped_missing_api_id": skipped_missing_api_id,
+        "protected_manual_result": protected_manual_result,
+        "duplicate_matches_repaired": duplicate_matches_repaired,
+        "repaired_duplicates": repaired_duplicates,
         "missing_teams": missing_teams,
     }
 

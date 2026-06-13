@@ -1,0 +1,148 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+type WorldCupLoaderProps = {
+  className?: string;
+};
+
+const BALL_ASSET = "/assets/fifa-trionda-ball-world-cup-2026.glb";
+
+export function WorldCupLoader({
+  className = "",
+}: WorldCupLoaderProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+
+    if (!host) return;
+
+    let animationFrame = 0;
+    let disposed = false;
+    let modelRoot: THREE.Group | null = null;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+    camera.position.set(0, 0.2, 4.8);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance",
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setClearColor(0x000000, 0);
+    host.appendChild(renderer.domElement);
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x1b2740, 2.4));
+
+    const keyLight = new THREE.DirectionalLight(0xfff2c2, 3.2);
+    keyLight.position.set(2.8, 4.2, 3.4);
+    scene.add(keyLight);
+
+    const rimLight = new THREE.DirectionalLight(0x6ee7ff, 1.8);
+    rimLight.position.set(-3.4, 1.6, -2.2);
+    scene.add(rimLight);
+
+    const resize = () => {
+      const size = Math.max(96, host.clientWidth);
+      renderer.setSize(size, size, false);
+      camera.aspect = 1;
+      camera.updateProjectionMatrix();
+    };
+
+    const resizeObserver = new ResizeObserver(resize);
+    resizeObserver.observe(host);
+    resize();
+
+    const loader = new GLTFLoader();
+    loader.load(
+      BALL_ASSET,
+      (gltf) => {
+        if (disposed) return;
+
+        const model = gltf.scene;
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxSize = Math.max(size.x, size.y, size.z) || 1;
+
+        model.position.sub(center);
+        model.scale.setScalar(2.2 / maxSize);
+        model.rotation.set(0, 0, 0);
+
+        model.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.castShadow = false;
+            child.receiveShadow = false;
+          }
+        });
+
+        group.add(model);
+        modelRoot = model;
+      },
+      undefined,
+      undefined
+    );
+
+    const clock = new THREE.Clock();
+
+    const animate = () => {
+      const elapsed = clock.getElapsedTime();
+
+      if (modelRoot) {
+        modelRoot.rotation.x = elapsed * 1.8;
+        modelRoot.rotation.y = elapsed * 1.35;
+        modelRoot.rotation.z = elapsed * 0.7;
+        group.position.y = Math.abs(Math.sin(elapsed * 3.1)) * 0.9 - 0.42;
+      }
+
+      renderer.render(scene, camera);
+      animationFrame = window.requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => {
+      disposed = true;
+      window.cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
+      renderer.dispose();
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+
+          materials.forEach((material) => material.dispose());
+        }
+      });
+      renderer.domElement.remove();
+    };
+  }, []);
+
+  return (
+    <div className={`flex flex-col items-center justify-center text-center ${className}`}>
+      <div
+        className="relative h-48 w-40 overflow-visible md:h-56 md:w-48"
+        aria-hidden="true"
+        ref={hostRef}
+      >
+        <div className="pointer-events-none absolute inset-x-8 bottom-3 h-4 rounded-full bg-black/35 blur-md" />
+      </div>
+
+      <p className="wc-muted mt-4 text-sm font-black uppercase tracking-[0.22em]">
+        Loading
+      </p>
+    </div>
+  );
+}

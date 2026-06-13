@@ -18,6 +18,7 @@ import {
   getMatchTimestamp,
   MatchTimeBadge,
 } from "@/components/MatchTimeBadge";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 import { getLockedButtonLabel, mapLocksByKey } from "@/lib/locks";
 import {
   formatTeamRank,
@@ -536,8 +537,8 @@ export default function GroupMatchesPage() {
         )}
 
         {loading ? (
-          <div className="wc-card flex items-center justify-center py-12">
-            <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+          <div className="py-8">
+            <WorldCupLoader />
           </div>
         ) : activeMatches.length === 0 ? (
           <div className="wc-card py-10 text-center">

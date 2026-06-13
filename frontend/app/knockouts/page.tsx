@@ -18,6 +18,7 @@ import {
   getMatchTimestamp,
   MatchTimeBadge,
 } from "@/components/MatchTimeBadge";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 import {
   getLockedButtonLabel,
   mapLocksByKey,
@@ -604,11 +605,8 @@ export default function KnockoutsPage() {
         )}
 
         {loading ? (
-          <div className="wc-card flex items-center justify-center gap-3 py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-300" />
-            <p className="text-sm font-bold text-slate-400">
-              Loading knockout matches...
-            </p>
+          <div className="py-8">
+            <WorldCupLoader />
           </div>
         ) : matches.length === 0 ? (
           <div className="wc-card py-12 text-center">

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 import { supabase } from "@/lib/supabase/client";
 import { useAdminGuard } from "@/lib/useAdminGuard";
 
@@ -270,10 +271,7 @@ export default function AdminLocksPage() {
   if (checkingAdmin) {
     return (
       <main className="wc-page flex min-h-screen items-center justify-center p-6 text-white">
-        <div className="wc-card flex items-center gap-3 p-6">
-          <Loader2 className="h-5 w-5 animate-spin text-blue-300" />
-          <p className="wc-muted font-bold">Checking admin access...</p>
-        </div>
+        <WorldCupLoader />
       </main>
     );
   }
@@ -296,9 +294,8 @@ export default function AdminLocksPage() {
         </div>
 
         {loading && (
-          <div className="wc-card flex items-center justify-center gap-3 p-6 text-center">
-            <Loader2 className="h-5 w-5 animate-spin text-blue-300" />
-            <p className="wc-muted">Loading locks...</p>
+          <div className="py-8">
+            <WorldCupLoader />
           </div>
         )}
 

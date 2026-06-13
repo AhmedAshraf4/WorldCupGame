@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { DatabaseZap, Loader2, Lock, RefreshCw, Trophy } from "lucide-react";
+import { DatabaseZap, Lock, RefreshCw, Trophy } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 import { useAdminGuard } from "@/lib/useAdminGuard";
 
 const API_BASE_URL =
@@ -49,10 +50,7 @@ export default function AdminPage() {
   if (checkingAdmin) {
     return (
       <main className="wc-page flex min-h-screen items-center justify-center p-6 text-white">
-        <div className="wc-card flex items-center gap-3 p-6">
-          <Loader2 className="h-5 w-5 animate-spin text-blue-300" />
-          <p className="wc-muted font-bold">Checking admin access...</p>
-        </div>
+        <WorldCupLoader />
       </main>
     );
   }

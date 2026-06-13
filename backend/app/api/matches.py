@@ -27,6 +27,9 @@ def get_group_stage_matches():
         team_b = teams_by_id.get(match.get("team_b_id"))
         group = groups_by_id.get(match.get("group_id"))
 
+        if match.get("status") == "DUPLICATE":
+            continue
+
         if not team_a or not team_b:
             continue
 

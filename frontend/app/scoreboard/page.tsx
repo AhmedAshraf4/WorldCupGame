@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   Crown,
-  Loader2,
   Medal,
   Shield,
   Trophy,
@@ -11,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 import { supabase } from "@/lib/supabase/client";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -321,8 +321,8 @@ export default function ScoreboardPage() {
         )}
 
         {loading || clubLoading ? (
-          <div className="wc-card flex items-center justify-center py-12">
-            <Loader2 className="h-7 w-7 animate-spin text-blue-300" />
+          <div className="py-8">
+            <WorldCupLoader />
           </div>
         ) : visiblePlayers.length === 0 ? (
           <div className="wc-card py-10 text-center">

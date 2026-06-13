@@ -188,6 +188,9 @@ def get_knockout_matches(
     knockout_matches = []
 
     for match in matches:
+        if match.get("status") == "DUPLICATE":
+            continue
+
         match_round = get_match_round(match)
 
         if not match_round:
@@ -475,7 +478,8 @@ def get_group_matches(
     group_matches = [
         match
         for match in matches
-        if is_group_match(match)
+        if match.get("status") != "DUPLICATE"
+        and is_group_match(match)
         and match.get("team_a_id")
         and match.get("team_b_id")
     ]

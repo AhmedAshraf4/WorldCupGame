@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { BottomNav } from "@/components/bottomnav";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -130,9 +131,7 @@ export default function HomePage() {
   if (loading) {
     return (
       <main className="wc-page flex min-h-screen items-center justify-center p-6 text-white">
-        <div className="wc-card p-6 text-center">
-          <p className="wc-muted">Loading dashboard...</p>
-        </div>
+        <WorldCupLoader />
       </main>
     );
   }

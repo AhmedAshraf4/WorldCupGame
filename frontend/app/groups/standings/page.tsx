@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BottomNav } from "@/components/bottomnav";
 import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 import {
   getLockedButtonLabel,
   mapLocksByKey,
@@ -376,8 +377,8 @@ export default function GroupsPage() {
         </div>
 
         {loading && (
-          <div className="wc-card p-6 text-center">
-            <p className="wc-muted">Loading groups...</p>
+          <div className="py-8">
+            <WorldCupLoader />
           </div>
         )}
 

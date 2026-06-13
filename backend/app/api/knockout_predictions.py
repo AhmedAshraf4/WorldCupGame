@@ -245,7 +245,8 @@ def get_knockout_matches(
     knockout_matches = [
         match
         for match in all_matches
-        if is_knockout_match(match)
+        if match.get("status") != "DUPLICATE"
+        and is_knockout_match(match)
         and is_valid_uuid(match.get("team_a_id"))
         and is_valid_uuid(match.get("team_b_id"))
     ]

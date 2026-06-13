@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { PredictionLockBadge } from "@/components/PredictionLockBadge";
 import { ScoringRules } from "@/components/ScoringRules";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 import {
   getLockedButtonLabel,
   mapLocksByKey,
@@ -358,8 +359,8 @@ export default function OnboardingPage() {
         </div>
 
         {loading && (
-          <div className="wc-card p-6 text-center">
-            <p className="wc-muted">Loading tournament setup...</p>
+          <div className="py-8">
+            <WorldCupLoader />
           </div>
         )}
 

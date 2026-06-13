@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, Star, Trophy } from "lucide-react";
+import { CheckCircle2, Star, Trophy } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
 import { PredictionLockBadge } from "@/components/PredictionLockBadge";
+import { WorldCupLoader } from "@/components/WorldCupLoader";
 import {
   getLockedButtonLabel,
   mapLocksByKey,
@@ -446,9 +447,8 @@ export default function GroupWildcardsPage() {
         </div>
 
         {loading && (
-          <div className="wc-card flex items-center justify-center gap-3 p-6 text-center">
-            <Loader2 className="h-5 w-5 animate-spin text-blue-300" />
-            <p className="wc-muted">Loading group wildcards...</p>
+          <div className="py-8">
+            <WorldCupLoader />
           </div>
         )}
 
