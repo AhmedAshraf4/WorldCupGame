@@ -91,6 +91,7 @@ export function WorldCupLoader({
         model.position.sub(center);
         model.scale.setScalar(0.95 / maxSize);
         model.rotation.set(0, 0, 0);
+        group.position.set(-0.28, 0.28, 0);
 
         model.traverse((child) => {
           if (child instanceof THREE.Mesh) {
