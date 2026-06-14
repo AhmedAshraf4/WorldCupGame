@@ -143,6 +143,24 @@ def get_winner_team_id_from_api_match(
     return None
 
 
+def get_matchday_from_api_match(match: dict[str, Any]) -> int | None:
+    for key in ["matchday", "groupMatchday", "group_matchday"]:
+        value = match.get(key)
+
+        if value is None:
+            continue
+
+        try:
+            matchday = int(value)
+        except (TypeError, ValueError):
+            continue
+
+        if matchday in [1, 2, 3]:
+            return matchday
+
+    return None
+
+
 def map_api_stage_to_app_stage(api_stage: str | None) -> str:
     if not api_stage:
         return "UNKNOWN"
@@ -244,12 +262,70 @@ def load_existing_matches() -> list[dict[str, Any]]:
         .table("matches")
         .select(
             "id,api_provider,api_match_id,is_manual_override,stage,group_id,"
-            "team_a_id,team_b_id,actual_outcome,actual_winner_team_id,status"
+            "team_a_id,team_b_id,actual_outcome,actual_winner_team_id,status,"
+            "matchday"
         )
         .execute()
     )
 
     return result.data or []
+
+
+def get_group_fixture_key(match: dict[str, Any]) -> tuple | None:
+    group_id = match.get("group_id")
+    team_a_id = match.get("team_a_id")
+    team_b_id = match.get("team_b_id")
+
+    if not group_id or not team_a_id or not team_b_id:
+        return None
+
+    return (str(group_id), str(team_a_id), str(team_b_id))
+
+
+def restore_matchdays_from_duplicate_rows(matches: list[dict[str, Any]]) -> int:
+    visible_by_fixture = {}
+
+    for match in matches:
+        if match.get("status") == "DUPLICATE":
+            continue
+
+        if match.get("stage") != "GROUP":
+            continue
+
+        key = get_group_fixture_key(match)
+
+        if key:
+            visible_by_fixture[key] = match
+
+    restored_count = 0
+
+    for duplicate_match in matches:
+        if duplicate_match.get("status") != "DUPLICATE":
+            continue
+
+        matchday = get_matchday_from_api_match(duplicate_match)
+
+        if not matchday:
+            continue
+
+        key = get_group_fixture_key(duplicate_match)
+        visible_match = visible_by_fixture.get(key) if key else None
+
+        if not visible_match or visible_match.get("matchday"):
+            continue
+
+        (
+            supabase
+            .table("matches")
+            .update({"matchday": matchday})
+            .eq("id", visible_match["id"])
+            .execute()
+        )
+
+        visible_match["matchday"] = matchday
+        restored_count += 1
+
+    return restored_count
 
 
 def index_matches_by_api_id(matches: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -360,7 +436,13 @@ def migrate_prediction_references(
     return {"moved": moved, "deleted_conflicts": deleted_conflicts}
 
 
-def migrate_duplicate_match(source_match_id: str, target_match_id: str) -> dict[str, Any]:
+def migrate_duplicate_match(
+    source_match: dict[str, Any],
+    target_match: dict[str, Any],
+) -> dict[str, Any]:
+    source_match_id = source_match["id"]
+    target_match_id = target_match["id"]
+
     group_result = migrate_prediction_references(
         "group_match_predictions",
         source_match_id,
@@ -371,6 +453,18 @@ def migrate_duplicate_match(source_match_id: str, target_match_id: str) -> dict[
         source_match_id,
         target_match_id,
     )
+
+    source_matchday = get_matchday_from_api_match(source_match)
+
+    if source_matchday and not target_match.get("matchday"):
+        (
+            supabase
+            .table("matches")
+            .update({"matchday": source_matchday})
+            .eq("id", target_match_id)
+            .execute()
+        )
+        target_match["matchday"] = source_matchday
 
     (
         supabase
@@ -456,6 +550,7 @@ async def sync_world_cup_matches() -> dict[str, Any]:
     team_ids_by_name = load_team_ids_by_name()
     group_ids_by_code = load_group_ids_by_code()
     existing_matches = load_existing_matches()
+    restored_matchdays = restore_matchdays_from_duplicate_rows(existing_matches)
     existing_matches_by_api_id = index_matches_by_api_id(existing_matches)
     existing_matches_by_natural_key = group_matches_by_natural_key(existing_matches)
     logger.warning(
@@ -523,6 +618,7 @@ async def sync_world_cup_matches() -> dict[str, Any]:
 
         group_code = extract_group_code(api_match.get("group"))
         group_id = group_ids_by_code.get(group_code) if app_stage == "GROUP" else None
+        matchday = get_matchday_from_api_match(api_match)
 
         row = {
             "stage": app_stage,
@@ -543,6 +639,9 @@ async def sync_world_cup_matches() -> dict[str, Any]:
             ),
         }
 
+        if app_stage == "GROUP" and matchday:
+            row["matchday"] = matchday
+
         existing_match = existing_matches_by_api_id.get(api_match_id)
         natural_key = get_match_natural_key(row)
         natural_matches = (
@@ -560,8 +659,8 @@ async def sync_world_cup_matches() -> dict[str, Any]:
                 duplicate_matches_repaired += 1
                 repaired_duplicates.append(
                     migrate_duplicate_match(
-                        source_match_id=duplicate_match["id"],
-                        target_match_id=existing_match["id"],
+                        source_match=duplicate_match,
+                        target_match=existing_match,
                     )
                 )
 
@@ -578,8 +677,8 @@ async def sync_world_cup_matches() -> dict[str, Any]:
                 duplicate_matches_repaired += 1
                 repaired_duplicates.append(
                     migrate_duplicate_match(
-                        source_match_id=duplicate_match["id"],
-                        target_match_id=existing_match["id"],
+                        source_match=duplicate_match,
+                        target_match=existing_match,
                     )
                 )
 
@@ -630,6 +729,7 @@ async def sync_world_cup_matches() -> dict[str, Any]:
         "synced": synced,
         "skipped_missing_team": skipped_missing_team,
         "skipped_missing_api_id": skipped_missing_api_id,
+        "restored_matchdays_from_duplicates": restored_matchdays,
         "protected_manual_result": protected_manual_result,
         "duplicate_matches_repaired": duplicate_matches_repaired,
         "repaired_duplicates": repaired_duplicates,
