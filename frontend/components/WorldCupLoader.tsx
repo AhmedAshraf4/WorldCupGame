@@ -8,7 +8,7 @@ type WorldCupLoaderProps = {
   className?: string;
 };
 
-const BALL_ASSET = "/assets/fifa-trionda-ball-world-cup-2026.glb";
+const BALL_ASSET = "/assets/untitled.gltf";
 
 export function WorldCupLoader({
   className = "",
@@ -89,9 +89,9 @@ export function WorldCupLoader({
         const maxSize = Math.max(size.x, size.y, size.z) || 1;
 
         model.position.sub(center);
-        model.scale.setScalar(0.95 / maxSize);
+        model.scale.setScalar(0.78 / maxSize);
         model.rotation.set(0, 0, 0);
-        group.position.set(-0.28, 0.28, 0);
+        group.position.set(0, 0, 0);
 
         model.traverse((child) => {
           if (child instanceof THREE.Mesh) {
@@ -228,7 +228,7 @@ export function WorldCupLoader({
         ref={stageRef}
       >
         <div
-          className="pointer-events-auto fixed left-0 top-0 h-72 w-72 cursor-pointer overflow-hidden md:h-80 md:w-80"
+          className="pointer-events-auto fixed left-0 top-0 h-72 w-72 cursor-pointer overflow-visible md:h-80 md:w-80"
           onPointerDown={(event) => kickAwayFromPoint(event.clientX, event.clientY)}
           ref={hostRef}
         />
