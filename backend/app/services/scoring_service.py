@@ -157,11 +157,22 @@ def build_group_match_prediction_score_events(
             underdog_team_id = get_underdog_team_id(match, teams_by_id)
 
             if predicted_team_id and predicted_team_id == underdog_team_id:
-                if actual_winner_team_id == underdog_team_id:
+                underdog_won = (
+                    actual_winner_team_id is not None
+                    and actual_winner_team_id == underdog_team_id
+                )
+
+                if underdog_won:
                     points = GROUP_MATCH_POINTS * 2
                     description = (
                         f"Group match underdog prediction correct. "
                         f"Base {GROUP_MATCH_POINTS} x2."
+                    )
+                elif actual_outcome == "DRAW":
+                    points = GROUP_MATCH_POINTS * -1
+                    description = (
+                        f"Group match underdog prediction drew. "
+                        f"Lost {GROUP_MATCH_POINTS}."
                     )
                 else:
                     points = GROUP_MATCH_POINTS * -2
