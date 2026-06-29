@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import APIKeyHeader
 
 from app.core.supabase import supabase
+from app.api.badges import BADGES, build_badges_for_profile, get_manual_badge_keys
 
 router = APIRouter()
 
@@ -74,9 +75,30 @@ def enrich_profiles_with_avatars(profiles: list[dict]) -> list[dict]:
             **profile,
             "rank": index + 1,
             "avatar": avatar,
+            "selected_badge": get_selected_badge(profile),
         })
 
     return enriched_profiles
+
+
+def get_selected_badge(profile: dict) -> dict | None:
+    selected_badge_key = profile.get("selected_badge_key")
+
+    if selected_badge_key not in BADGES:
+        return None
+
+    owned_badge_keys = {
+        badge["key"]
+        for badge in build_badges_for_profile(
+            profile,
+            get_manual_badge_keys(profile.get("id")),
+        )
+    }
+
+    if selected_badge_key not in owned_badge_keys:
+        return None
+
+    return BADGES[selected_badge_key]
 
 
 @router.get("/global")
@@ -86,7 +108,7 @@ def get_global_scoreboard(
     profiles_result = (
         supabase
         .table("profiles")
-        .select("id,display_name,total_points,avatar_id")
+        .select("id,display_name,total_points,avatar_id,selected_badge_key")
         .order("total_points", desc=True)
         .limit(100)
         .execute()
@@ -164,7 +186,7 @@ def get_club_scoreboard(
     profiles_result = (
         supabase
         .table("profiles")
-        .select("id,display_name,total_points,avatar_id")
+        .select("id,display_name,total_points,avatar_id,selected_badge_key")
         .in_("id", user_ids)
         .order("total_points", desc=True)
         .execute()

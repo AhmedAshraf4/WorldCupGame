@@ -24,6 +24,7 @@ from app.api.scoring import router as scoring_router
 from app.api.admin_results import router as admin_results_router
 from app.api.admin_locks import router as admin_locks_router
 from app.api.locks import router as locks_router
+from app.api.badges import router as badges_router
 from app.services.auto_sync_service import (
     start_auto_sync_task,
     stop_auto_sync_task,
@@ -115,6 +116,7 @@ app.include_router(
 )
 
 app.include_router(scoring_router, prefix="/scoring", tags=["Scoring"])
+app.include_router(badges_router, prefix="/badges", tags=["Badges"])
 
 @app.get("/")
 def root():

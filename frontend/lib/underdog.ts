@@ -4,6 +4,9 @@ export type RankedTeam = {
   fifa_points?: number | string | null;
 };
 
+const MEANINGFUL_UNDERDOG_RANK_GAP = 3;
+const MEANINGFUL_UNDERDOG_POINTS_GAP = 10;
+
 function toNumber(value: number | string | null | undefined) {
   if (value === null || value === undefined || value === "") return null;
 
@@ -21,16 +24,18 @@ export function getMeaningfulUnderdogTeamId(
   const teamBRank = toNumber(teamB.fifa_rank);
 
   if (teamARank !== null && teamBRank !== null) {
-    if (Math.abs(teamARank - teamBRank) > 3) {
+    if (Math.abs(teamARank - teamBRank) > MEANINGFUL_UNDERDOG_RANK_GAP) {
       return teamARank > teamBRank ? teamA.id : teamB.id;
     }
+
+    return null;
   }
 
   const teamAPoints = toNumber(teamA.fifa_points);
   const teamBPoints = toNumber(teamB.fifa_points);
 
   if (teamAPoints !== null && teamBPoints !== null) {
-    if (Math.abs(teamAPoints - teamBPoints) >= 10) {
+    if (Math.abs(teamAPoints - teamBPoints) >= MEANINGFUL_UNDERDOG_POINTS_GAP) {
       return teamAPoints < teamBPoints ? teamA.id : teamB.id;
     }
   }

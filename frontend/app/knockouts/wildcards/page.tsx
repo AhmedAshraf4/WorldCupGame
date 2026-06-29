@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Star, Trophy } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Star,
+  Trophy,
+} from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
 import {
@@ -444,20 +450,24 @@ export default function KnockoutWildcardsPage() {
       return;
     }
 
-    diff > 0 ? nextWildcard() : previousWildcard();
+    if (diff > 0) {
+      nextWildcard();
+    } else {
+      previousWildcard();
+    }
 
     setTouchStartX(null);
   }
 
-function confirmCurrentWildcard() {
-  if (!currentPredictionOpen) return;
-  if (!currentPrediction) return;
+  function confirmCurrentWildcard() {
+    if (!currentPredictionOpen) return;
+    if (!currentPrediction) return;
 
-  setSelectedTeamByRound((previous) => ({
-    ...previous,
-    [currentRound]: currentPrediction.team_id,
-  }));
-}
+    setSelectedTeamByRound((previous) => ({
+      ...previous,
+      [currentRound]: currentPrediction.team_id,
+    }));
+  }
   async function saveWildcards() {
     try {
       if (!token) {
@@ -645,17 +655,19 @@ function confirmCurrentWildcard() {
                   <button
                     onClick={previousWildcard}
                     disabled={!currentGateOpen}
-                    className="absolute left-4 z-40 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
+                    className="absolute left-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Previous wildcard option"
                   >
-                    ‹
+                    <ChevronLeft className="h-6 w-6" />
                   </button>
 
                   <button
                     onClick={nextWildcard}
                     disabled={!currentGateOpen}
-                    className="absolute right-4 z-40 rounded-full border border-white/10 bg-white/10 px-3 py-2 text-3xl hover:bg-white/20"
+                    className="absolute right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/10 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Next wildcard option"
                   >
-                    ›
+                    <ChevronRight className="h-6 w-6" />
                   </button>
 
                   {currentPrediction?.team && (
@@ -730,17 +742,19 @@ function confirmCurrentWildcard() {
                                 <div
                                   className={`flex items-center justify-center rounded-full bg-white/10 transition-all duration-500 ${
                                     isCurrent
-                                      ? "h-32 w-32 text-5xl"
-                                      : "h-24 w-24 text-3xl"
+                                      ? "h-32 w-32"
+                                      : "h-24 w-24"
                                   }`}
                                 >
-                                  🏆
+                                  <Trophy
+                                    className={isCurrent ? "h-14 w-14" : "h-9 w-9"}
+                                  />
                                 </div>
                               )}
 
                               {isSelected && (
-                                <div className="absolute -bottom-1 rounded-full bg-green-500 px-2 py-1 text-[10px] font-black text-white">
-                                  ✓
+                                <div className="absolute -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white">
+                                  <CheckCircle2 className="h-4 w-4" />
                                 </div>
                               )}
                             </button>
@@ -753,7 +767,7 @@ function confirmCurrentWildcard() {
                       </h2>
 
                       <p className="wc-muted mt-1 text-sm">
-                        {currentGroup.round_label} · {currentIndex + 1} /{" "}
+                        {currentGroup.round_label} - {currentIndex + 1} /{" "}
                         {currentOptions.length}
                       </p>
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { FetchRetryProvider } from "@/components/FetchRetryProvider";
+import { WinnerAnnouncementModal } from "@/components/WinnerAnnouncementModal";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,7 +30,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <FetchRetryProvider>{children}</FetchRetryProvider>
+        <FetchRetryProvider>
+          {children}
+          <WinnerAnnouncementModal />
+        </FetchRetryProvider>
       </body>
     </html>
   );

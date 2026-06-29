@@ -13,6 +13,8 @@ GROUP_DIRECT_QUALIFIED_WRONG_POSITION_POINTS = 2
 GROUP_BEST_THIRD_POINTS = 1
 GROUP_WILDCARD_MULTIPLIER = 3
 GROUP_MATCH_POINTS = 1
+MEANINGFUL_UNDERDOG_RANK_GAP = 3
+MEANINGFUL_UNDERDOG_POINTS_GAP = 10
 
 CHAMPION_POINTS = 50
 
@@ -54,6 +56,13 @@ def to_float_or_none(value: Any) -> float | None:
         return None
 
 
+def normalize_outcome(value: Any) -> str | None:
+    if not value:
+        return None
+
+    return str(value).strip().upper()
+
+
 def get_underdog_team_id(
     match: dict[str, Any],
     teams_by_id: dict[str, dict[str, Any]],
@@ -74,14 +83,16 @@ def get_underdog_team_id(
     team_b_rank = to_int_or_none(team_b.get("fifa_rank"))
 
     if team_a_rank is not None and team_b_rank is not None:
-        if abs(team_a_rank - team_b_rank) > 3:
+        if abs(team_a_rank - team_b_rank) > MEANINGFUL_UNDERDOG_RANK_GAP:
             return team_a_id if team_a_rank > team_b_rank else team_b_id
+
+        return None
 
     team_a_points = to_float_or_none(team_a.get("fifa_points"))
     team_b_points = to_float_or_none(team_b.get("fifa_points"))
 
     if team_a_points is not None and team_b_points is not None:
-        if abs(team_a_points - team_b_points) >= 10:
+        if abs(team_a_points - team_b_points) >= MEANINGFUL_UNDERDOG_POINTS_GAP:
             return team_a_id if team_a_points < team_b_points else team_b_id
 
     return None
@@ -123,7 +134,7 @@ def build_group_match_prediction_score_events(
     for prediction in group_match_predictions:
         user_id = prediction.get("user_id")
         match_id = prediction.get("match_id")
-        predicted_outcome = prediction.get("predicted_outcome")
+        predicted_outcome = normalize_outcome(prediction.get("predicted_outcome"))
 
         if not user_id or not match_id or not predicted_outcome:
             continue
@@ -133,7 +144,7 @@ def build_group_match_prediction_score_events(
         if not match:
             continue
 
-        actual_outcome = match.get("actual_outcome")
+        actual_outcome = normalize_outcome(match.get("actual_outcome"))
 
         if not actual_outcome:
             continue

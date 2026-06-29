@@ -21,6 +21,12 @@ type Avatar = {
   image_url?: string | null;
 };
 
+type SelectedBadge = {
+  key: string;
+  name: string;
+  image_url: string;
+};
+
 type Player = {
   id: string;
   display_name: string | null;
@@ -28,6 +34,7 @@ type Player = {
   avatar_id?: string | null;
   rank: number;
   avatar?: Avatar | null;
+  selected_badge?: SelectedBadge | null;
 };
 
 type Club = {
@@ -88,9 +95,19 @@ function PlayerRow({ player }: { player: Player }) {
         )}
 
         <div className="min-w-0">
-          <p className="truncate font-black text-white">
-            {player.display_name || "Unknown Player"}
-          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate font-black text-white">
+              {player.display_name || "Unknown Player"}
+            </p>
+            {player.selected_badge?.image_url && (
+              <img
+                src={player.selected_badge.image_url}
+                alt={player.selected_badge.name}
+                className="h-6 w-6 shrink-0 rounded-full object-cover"
+                title={player.selected_badge.name}
+              />
+            )}
+          </div>
           <p className="text-xs font-bold uppercase tracking-widest text-slate-500">
             Rank #{player.rank}
           </p>

@@ -17,7 +17,8 @@ const sections = [
       "Correct draw prediction: +1 point.",
       "Wrong draw prediction: 0 points.",
       "If you pick a meaningful underdog to win and they win: +2 points.",
-      "If you pick a meaningful underdog to win and they lose or draw: -2 points.",
+      "If you pick a meaningful underdog to win and the match is a draw: -1 point.",
+      "If you pick a meaningful underdog to win and they lose: -2 points.",
       "Picking the stronger team keeps normal scoring: +1 if correct, 0 if wrong.",
       "Draw picks do not use underdog multipliers.",
     ],
@@ -139,8 +140,8 @@ export function ScoringRules({ compact = false }: { compact?: boolean }) {
             than 3, so rank #60 is an underdog against rank #15.
           </p>
           <p className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold text-slate-200">
-            If rank is missing or too close, FIFA points are checked. Lower
-            points are weaker, and the difference must be at least 10.
+            If either rank is missing, FIFA points are checked. Lower points
+            are weaker, and the difference must be at least 10.
           </p>
           <p className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm font-semibold text-slate-200">
             If neither rank nor points show a big enough gap, there is no

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { DatabaseZap, Lock, RefreshCw, Trophy } from "lucide-react";
+import { Award, DatabaseZap, Lock, RefreshCw, Trophy } from "lucide-react";
 
 import { BottomNav } from "@/components/bottomnav";
 import { WorldCupLoader } from "@/components/WorldCupLoader";
@@ -111,6 +111,17 @@ export default function AdminPage() {
             />
             <h2 className="text-2xl font-black">Recalculate Scores</h2>
             <p className="wc-muted mt-2">Rebuild score events and totals.</p>
+          </button>
+
+          <button
+            onClick={() => router.push("/admin/badges")}
+            className="wc-card p-5 text-left transition hover:bg-white/10"
+          >
+            <Award className="mb-4 h-7 w-7 text-purple-300" />
+            <h2 className="text-2xl font-black">Badges</h2>
+            <p className="wc-muted mt-2">
+              Declare the final winner and award the winner badge.
+            </p>
           </button>
 
           <button

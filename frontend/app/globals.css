@@ -104,6 +104,32 @@ textarea {
   }
 }
 
+@keyframes wc-confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(-12vh) rotate(0deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(112vh) rotate(540deg);
+  }
+}
+
+.wc-confetti-piece {
+  position: absolute;
+  top: -2rem;
+  width: 0.55rem;
+  height: 1rem;
+  border-radius: 0.2rem;
+  animation-name: wc-confetti-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.22);
+}
+
 .wc-slide-from-right {
   animation: wc-slide-in-from-right 0.28s ease-out;
 }

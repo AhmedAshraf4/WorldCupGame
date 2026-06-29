@@ -9,6 +9,7 @@ import {
   Loader2,
   Lock,
   Shield,
+  Star,
   Trophy,
   Unlock,
 } from "lucide-react";
@@ -527,6 +528,34 @@ export default function KnockoutsPage() {
           <p className="wc-muted mt-2">
             Pick the winner of each knockout match once teams are available.
           </p>
+        </div>
+
+        <div className="wc-card mb-5 p-4 md:p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-yellow-400/30 bg-yellow-400/10 text-yellow-200">
+                <Star className="h-5 w-5" />
+              </div>
+
+              <div>
+                <h2 className="text-lg font-black text-white">
+                  Knockout Wildcards
+                </h2>
+                <p className="mt-1 text-sm font-semibold text-slate-300">
+                  Pick one wildcard from your predicted winners in each
+                  knockout round. Correct scores that round x3, wrong scores
+                  that round x-3.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => router.push("/knockouts/wildcards")}
+              className="wc-button-gold shrink-0 px-5 py-3"
+            >
+              Choose Wildcards
+            </button>
+          </div>
         </div>
 
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
