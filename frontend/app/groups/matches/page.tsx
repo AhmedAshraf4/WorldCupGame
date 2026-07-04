@@ -157,6 +157,19 @@ function getGroupLabel(group?: Group | null) {
   return group.name || (group.code ? `Group ${group.code}` : "Group");
 }
 
+function normalizeTeamName(name?: string | null) {
+  return (name || "").trim().toLowerCase();
+}
+
+function isSouthAfricaSouthKoreaMatch(match: Match) {
+  const teamNames = [
+    normalizeTeamName(match.team_a?.name),
+    normalizeTeamName(match.team_b?.name),
+  ];
+
+  return teamNames.includes("south africa") && teamNames.includes("south korea");
+}
+
 function isLockGateOpen(lock?: LockStatus) {
   return !lock || lock.is_open || lock.reason === "DEADLINE_PASSED";
 }
@@ -559,6 +572,8 @@ export default function GroupMatchesPage() {
               );
               const matchOpen = isMatchPredictionOpen(match, activeLock);
               const deadlinePassed = !isMatchDeadlineOpen(match);
+              const showSouthAfricaKoreaEgg =
+                isSouthAfricaSouthKoreaMatch(match);
 
               return (
                 <div key={match.id} className="wc-card space-y-4">
@@ -581,6 +596,15 @@ export default function GroupMatchesPage() {
                   </div>
 
                   <div className="space-y-3">
+                    <h3 className="text-lg font-black leading-tight text-white">
+                      {match.team_a.name} vs {match.team_b.name}{" "}
+                      {showSouthAfricaKoreaEgg && (
+                        <span className="text-xl" aria-label="haha pointing at you">
+                          🤣 🫵
+                        </span>
+                      )}
+                    </h3>
+
                     <div className="rounded-2xl bg-white/5 p-3">
                       <TeamLabel
                         team={match.team_a}

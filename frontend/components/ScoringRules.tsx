@@ -39,7 +39,7 @@ const sections = [
     accent: "text-purple-200",
     items: [
       "Choose one wildcard from each predicted group position.",
-      "If the related group standing prediction earns points, wildcard score is base group score x3.",
+      "If the related group standing prediction earns points, that pick's total becomes base group score x3.",
       "If the wildcard is wrong: -15 points.",
     ],
   },
@@ -64,7 +64,7 @@ const sections = [
     accent: "text-red-200",
     items: [
       "Choose one wildcard per knockout round from your predicted winners.",
-      "Correct knockout wildcard: +3 x that round's points.",
+      "Correct knockout wildcard makes that pick's total +3 x that round's points.",
       "Wrong knockout wildcard: -3 x that round's points.",
     ],
   },

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { BackgroundMusic } from "@/components/BackgroundMusic";
 import { FetchRetryProvider } from "@/components/FetchRetryProvider";
 import { WinnerAnnouncementModal } from "@/components/WinnerAnnouncementModal";
 import "./globals.css";
@@ -31,6 +32,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <FetchRetryProvider>
+          <BackgroundMusic />
           {children}
           <WinnerAnnouncementModal />
         </FetchRetryProvider>

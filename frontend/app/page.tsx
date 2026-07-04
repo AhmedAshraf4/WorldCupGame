@@ -43,11 +43,135 @@ type MeResponse = {
 
 type ScoreResponse = {
   total_points?: number;
-  score_events?: unknown[];
-  data?: {
-    total_points?: number;
-  };
+  score_events?: ScoreEvent[];
+  data?: ScoreEvent[];
 };
+
+type ScoreEvent = {
+  id?: string;
+  source_type?: string | null;
+  source_key?: string | null;
+  points?: number | null;
+  description?: string | null;
+  created_at?: string | null;
+};
+
+type Team = {
+  id: string;
+  name: string;
+  flag_url?: string | null;
+};
+
+type Group = {
+  id: string;
+  code: string;
+  name?: string | null;
+};
+
+type GroupPrediction = {
+  id?: string;
+  group_id: string;
+  team_id: string;
+  predicted_position: number;
+  team?: Team | null;
+  group?: Group | null;
+};
+
+type GroupWildcard = {
+  id?: string;
+  group_id: string;
+  team_id: string;
+  predicted_position: number;
+  team?: Team | null;
+  group?: Group | null;
+};
+
+type GroupMatch = {
+  id: string;
+  group_id?: string | null;
+  team_a_id: string;
+  team_b_id: string;
+  matchday?: number | null;
+  match_date?: string | null;
+  actual_outcome?: Outcome | null;
+  status?: string | null;
+  team_a?: Team | null;
+  team_b?: Team | null;
+  group?: Group | null;
+};
+
+type GroupMatchPrediction = {
+  id?: string;
+  match_id: string;
+  predicted_outcome: Outcome;
+  matchday?: number | null;
+};
+
+type Outcome = "TEAM_A_WIN" | "DRAW" | "TEAM_B_WIN";
+
+type PointsBreakdown = {
+  standing: number;
+  wildcard: number;
+  total: number;
+};
+
+function formatScoreDate(value?: string | null) {
+  if (!value) return "";
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatPoints(points: number) {
+  return `${points > 0 ? "+" : ""}${points}`;
+}
+
+function getGroupLabel(group?: Group | null) {
+  if (!group) return "Group";
+
+  return group.name || (group.code ? `Group ${group.code}` : "Group");
+}
+
+function getOutcomeLabel(outcome?: Outcome | string | null, match?: GroupMatch) {
+  if (!outcome) return "Pending";
+  if (outcome === "DRAW") return "Draw";
+  if (outcome === "TEAM_A_WIN") return `${match?.team_a?.name || "Team A"} win`;
+  if (outcome === "TEAM_B_WIN") return `${match?.team_b?.name || "Team B"} win`;
+
+  return outcome;
+}
+
+function normalizeTeamName(name?: string | null) {
+  return (name || "").trim().toLowerCase();
+}
+
+function isSouthAfricaSouthKoreaMatch(match?: GroupMatch) {
+  if (!match) return false;
+
+  const teamNames = [
+    normalizeTeamName(match.team_a?.name),
+    normalizeTeamName(match.team_b?.name),
+  ];
+
+  return teamNames.includes("south africa") && teamNames.includes("south korea");
+}
+
+function getScoreEventPoints(
+  events: ScoreEvent[],
+  sourceType: string,
+  sourceKey: string
+) {
+  return events
+    .filter(
+      (event) =>
+        event.source_type === sourceType && event.source_key === sourceKey
+    )
+    .reduce((total, event) => total + Number(event.points || 0), 0);
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -55,13 +179,22 @@ export default function HomePage() {
   const [data, setData] = useState<MeResponse | null>(null);
   const [totalPoints, setTotalPoints] = useState(0);
   const [badges, setBadges] = useState<UserBadge[]>([]);
+  const [scoreEvents, setScoreEvents] = useState<ScoreEvent[]>([]);
+  const [groupPredictions, setGroupPredictions] = useState<GroupPrediction[]>(
+    []
+  );
+  const [groupWildcards, setGroupWildcards] = useState<GroupWildcard[]>([]);
+  const [groupMatchPredictions, setGroupMatchPredictions] = useState<
+    GroupMatchPrediction[]
+  >([]);
+  const [groupMatches, setGroupMatches] = useState<GroupMatch[]>([]);
   const [selectedBadgeKey, setSelectedBadgeKey] = useState<string | null>(null);
   const [selectingBadgeKey, setSelectingBadgeKey] = useState<string | null>(
     null
   );
-  const [activeTab, setActiveTab] = useState<"dashboard" | "badges">(
-    "dashboard"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "dashboard" | "breakdown" | "badges"
+  >("dashboard");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -71,6 +204,82 @@ export default function HomePage() {
     () => badges.find((badge) => badge.key === selectedBadgeKey) || null,
     [badges, selectedBadgeKey]
   );
+
+  const groupPredictionsByGroup = useMemo(() => {
+    const grouped = new Map<string, GroupPrediction[]>();
+
+    groupPredictions.forEach((prediction) => {
+      const groupId = prediction.group_id;
+      const predictions = grouped.get(groupId) || [];
+      predictions.push(prediction);
+      grouped.set(groupId, predictions);
+    });
+
+    return Array.from(grouped.values())
+      .map((predictions) =>
+        [...predictions].sort(
+          (a, b) => a.predicted_position - b.predicted_position
+        )
+      )
+      .sort((a, b) =>
+        getGroupLabel(a[0]?.group).localeCompare(getGroupLabel(b[0]?.group))
+      );
+  }, [groupPredictions]);
+
+  const wildcardByStandingKey = useMemo(() => {
+    const wildcards = new Map<string, GroupWildcard>();
+
+    groupWildcards.forEach((wildcard) => {
+      wildcards.set(
+        `${wildcard.group_id}:${wildcard.team_id}:${wildcard.predicted_position}`,
+        wildcard
+      );
+    });
+
+    return wildcards;
+  }, [groupWildcards]);
+
+  const matchById = useMemo(() => {
+    return new Map(groupMatches.map((match) => [match.id, match]));
+  }, [groupMatches]);
+
+  const sortedGroupMatchPredictions = useMemo(() => {
+    return [...groupMatchPredictions].sort((a, b) => {
+      const matchA = matchById.get(a.match_id);
+      const matchB = matchById.get(b.match_id);
+      const dateA = matchA?.match_date || "";
+      const dateB = matchB?.match_date || "";
+
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+      return (matchA?.team_a?.name || "").localeCompare(
+        matchB?.team_a?.name || ""
+      );
+    });
+  }, [groupMatchPredictions, matchById]);
+
+  function getStandingPoints(prediction: GroupPrediction): PointsBreakdown {
+    const standingKey = `${prediction.group_id}:${prediction.team_id}`;
+    const wildcardKey = `${standingKey}:${prediction.predicted_position}`;
+    const standing = getScoreEventPoints(
+      scoreEvents,
+      "GROUP_STANDING",
+      standingKey
+    );
+    const wildcard = getScoreEventPoints(
+      scoreEvents,
+      "GROUP_WILDCARD",
+      wildcardKey
+    );
+    const normalizedWildcard =
+      standing > 0 && wildcard > 0 ? Math.min(wildcard, standing * 2) : wildcard;
+
+    return {
+      standing,
+      wildcard: normalizedWildcard,
+      total: standing + normalizedWildcard,
+    };
+  }
 
   useEffect(() => {
     async function loadMe() {
@@ -107,7 +316,14 @@ export default function HomePage() {
 
         setData(meResult);
 
-        const [scoreResponse, badgesResponse] = await Promise.all([
+        const [
+          scoreResponse,
+          badgesResponse,
+          groupPredictionsResponse,
+          groupWildcardsResponse,
+          groupMatchPredictionsResponse,
+          groupMatchesResponse,
+        ] = await Promise.all([
           fetch(`${API_BASE_URL}/scoring/me`, {
             headers: {
               Authorization: `Bearer ${session.access_token}`,
@@ -120,28 +336,81 @@ export default function HomePage() {
             },
             cache: "no-store",
           }),
+          fetch(`${API_BASE_URL}/group-predictions/with-teams`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE_URL}/group-wildcards/with-teams`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE_URL}/group-match-predictions/with-matches`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE_URL}/matches/group-stage`, {
+            cache: "no-store",
+          }),
         ]);
 
         const scoreResult: ScoreResponse | null = await scoreResponse
           .json()
           .catch(() => null);
         const badgesResult = await badgesResponse.json().catch(() => null);
+        const groupPredictionsResult = await groupPredictionsResponse
+          .json()
+          .catch(() => null);
+        const groupWildcardsResult = await groupWildcardsResponse
+          .json()
+          .catch(() => null);
+        const groupMatchPredictionsResult = await groupMatchPredictionsResponse
+          .json()
+          .catch(() => null);
+        const groupMatchesResult = await groupMatchesResponse
+          .json()
+          .catch(() => null);
 
         if (scoreResponse.ok && scoreResult) {
           const latestTotal =
             scoreResult.total_points ??
-            scoreResult.data?.total_points ??
             meResult.total_points ??
             0;
 
           setTotalPoints(latestTotal);
+          setScoreEvents(scoreResult.score_events || scoreResult.data || []);
         } else {
           setTotalPoints(meResult.total_points || 0);
+          setScoreEvents([]);
         }
 
         if (badgesResponse.ok && badgesResult) {
           setBadges(badgesResult.data || []);
           setSelectedBadgeKey(badgesResult.selected_badge_key || null);
+        }
+
+        if (groupPredictionsResponse.ok && groupPredictionsResult) {
+          setGroupPredictions(groupPredictionsResult.data || []);
+        }
+
+        if (groupWildcardsResponse.ok && groupWildcardsResult) {
+          setGroupWildcards(groupWildcardsResult.data || []);
+        }
+
+        if (
+          groupMatchPredictionsResponse.ok &&
+          groupMatchPredictionsResult
+        ) {
+          setGroupMatchPredictions(groupMatchPredictionsResult.data || []);
+        }
+
+        if (groupMatchesResponse.ok && groupMatchesResult) {
+          setGroupMatches(groupMatchesResult.data || []);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
@@ -258,7 +527,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 gap-2 rounded-3xl border border-white/10 bg-white/5 p-2">
+        <div className="mb-6 grid grid-cols-3 gap-2 rounded-3xl border border-white/10 bg-white/5 p-2">
           <button
             onClick={() => setActiveTab("dashboard")}
             className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
@@ -268,6 +537,17 @@ export default function HomePage() {
             }`}
           >
             Dashboard
+          </button>
+
+          <button
+            onClick={() => setActiveTab("breakdown")}
+            className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
+              activeTab === "breakdown"
+                ? "bg-yellow-500/20 text-yellow-100"
+                : "text-slate-400 hover:bg-white/5"
+            }`}
+          >
+            Breakdown
           </button>
 
           <button
@@ -388,6 +668,225 @@ export default function HomePage() {
               </button>
             </div>
           </>
+        ) : activeTab === "breakdown" ? (
+          <div className="space-y-6">
+            <div className="wc-card p-5">
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="wc-gold text-xs font-black uppercase tracking-[0.22em]">
+                    Points
+                  </p>
+                  <h2 className="mt-1 text-2xl font-black">Full Breakdown</h2>
+                  <p className="wc-muted mt-1 text-sm">
+                    Group standings, wildcards, and match points in one place.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-right">
+                  <p className="wc-muted text-xs font-bold uppercase">
+                    Total
+                  </p>
+                  <p className="text-3xl font-black text-green-300">
+                    {totalPoints}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="wc-card p-5">
+              <div className="mb-4">
+                <p className="wc-gold text-xs font-black uppercase tracking-[0.22em]">
+                  Group Stage
+                </p>
+                <h3 className="mt-1 text-xl font-black">
+                  Standings You Chose
+                </h3>
+              </div>
+
+              {groupPredictionsByGroup.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center">
+                  <p className="font-black">No group standings saved yet.</p>
+                  <p className="wc-muted mt-1 text-sm">
+                    Your chosen groups will appear here after you submit them.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {groupPredictionsByGroup.map((predictions) => (
+                    <div
+                      key={predictions[0]?.group_id}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <h4 className="mb-3 text-lg font-black">
+                        {getGroupLabel(predictions[0]?.group)}
+                      </h4>
+
+                      <div className="space-y-2">
+                        {predictions.map((prediction) => {
+                          const points = getStandingPoints(prediction);
+                          const wildcard = wildcardByStandingKey.get(
+                            `${prediction.group_id}:${prediction.team_id}:${prediction.predicted_position}`
+                          );
+
+                          return (
+                            <div
+                              key={`${prediction.group_id}:${prediction.team_id}`}
+                              className="flex items-center justify-between gap-3 rounded-2xl bg-white/5 p-3"
+                            >
+                              <div className="flex min-w-0 items-center gap-3">
+                                <span className="w-6 shrink-0 text-sm font-black text-yellow-300">
+                                  {prediction.predicted_position}
+                                </span>
+                                {prediction.team?.flag_url && (
+                                  <img
+                                    src={prediction.team.flag_url}
+                                    alt={prediction.team.name}
+                                    className="h-8 w-8 shrink-0 rounded-full object-cover"
+                                  />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="truncate font-black">
+                                    {prediction.team?.name || "Unknown team"}
+                                  </p>
+                                  {wildcard && (
+                                    <p className="text-xs font-bold text-yellow-200">
+                                      Wildcard total:{" "}
+                                      {formatPoints(points.total)}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 text-right">
+                                <p
+                                  className={`text-lg font-black ${
+                                    points.total >= 0
+                                      ? "text-green-300"
+                                      : "text-red-300"
+                                  }`}
+                                >
+                                  {formatPoints(points.total)}
+                                </p>
+                                {wildcard && (
+                                  <p className="wc-muted text-xs">
+                                    Base {formatPoints(points.standing)} + bonus{" "}
+                                    {formatPoints(points.wildcard)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="wc-card p-5">
+              <div className="mb-4">
+                <p className="wc-gold text-xs font-black uppercase tracking-[0.22em]">
+                  Matches
+                </p>
+                <h3 className="mt-1 text-xl font-black">
+                  Actual Outcomes And Points
+                </h3>
+              </div>
+
+              {sortedGroupMatchPredictions.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center">
+                  <p className="font-black">No group match picks saved yet.</p>
+                  <p className="wc-muted mt-1 text-sm">
+                    Your match-by-match points will appear after you submit
+                    predictions.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {sortedGroupMatchPredictions.map((prediction) => {
+                    const match = matchById.get(prediction.match_id);
+                    const points = getScoreEventPoints(
+                      scoreEvents,
+                      "GROUP_MATCH_PREDICTION",
+                      prediction.match_id
+                    );
+                    const showSouthAfricaKoreaEgg =
+                      isSouthAfricaSouthKoreaMatch(match);
+
+                    return (
+                      <div
+                        key={prediction.match_id}
+                        className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                              <span className="rounded-full bg-white/10 px-2 py-1 font-black text-slate-200">
+                                {getGroupLabel(match?.group)}
+                              </span>
+                              <span>
+                                Matchday {match?.matchday || prediction.matchday || "?"}
+                              </span>
+                              {match?.match_date && (
+                                <span>{formatScoreDate(match.match_date)}</span>
+                              )}
+                            </div>
+
+                            <p className="text-lg font-black">
+                              {match?.team_a?.name || "Team A"} vs{" "}
+                              {match?.team_b?.name || "Team B"}{" "}
+                              {showSouthAfricaKoreaEgg && (
+                                <span
+                                  className="text-xl"
+                                  aria-label="haha pointing at you"
+                                >
+                                  🤣 🫵
+                                </span>
+                              )}
+                            </p>
+                          </div>
+
+                          <div
+                            className={`rounded-2xl px-3 py-2 text-lg font-black ${
+                              points >= 0
+                                ? "bg-green-500/10 text-green-300"
+                                : "bg-red-500/10 text-red-300"
+                            }`}
+                          >
+                            {formatPoints(points)}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-2 md:grid-cols-2">
+                          <div className="rounded-2xl bg-white/5 p-3">
+                            <p className="wc-muted text-xs font-bold uppercase">
+                              Your Pick
+                            </p>
+                            <p className="mt-1 font-black">
+                              {getOutcomeLabel(
+                                prediction.predicted_outcome,
+                                match
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white/5 p-3">
+                            <p className="wc-muted text-xs font-bold uppercase">
+                              Actual Result
+                            </p>
+                            <p className="mt-1 font-black">
+                              {getOutcomeLabel(match?.actual_outcome, match)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="wc-card p-5">
             <div className="mb-4">

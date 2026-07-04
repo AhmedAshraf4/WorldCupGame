@@ -14,9 +14,13 @@ supabase_module.supabase = object()
 sys.modules.setdefault("app.core.supabase", supabase_module)
 
 from app.services.scoring_service import (  # noqa: E402
+    GROUP_EXACT_POINTS,
     GROUP_MATCH_POINTS,
     ROUND_POINTS,
+    build_group_standing_score_events,
+    build_group_wildcard_score_events,
     build_group_match_prediction_score_events,
+    build_knockout_prediction_score_events,
     build_knockout_wildcard_score_events,
     get_underdog_team_id,
 )
@@ -73,6 +77,92 @@ class GroupMatchUnderdogScoringTests(unittest.TestCase):
         event = self.score_for("TEAM_A_WIN")
 
         self.assertEqual(event["points"], GROUP_MATCH_POINTS * 2)
+
+
+class GroupWildcardScoringTests(unittest.TestCase):
+    def score_for(self, actual_position):
+        events = []
+        build_group_wildcard_score_events(
+            events=events,
+            group_wildcards=[
+                {
+                    "user_id": "user-1",
+                    "group_id": "group-a",
+                    "team_id": "team-a",
+                    "predicted_position": 1,
+                }
+            ],
+            group_predictions=[
+                {
+                    "user_id": "user-1",
+                    "group_id": "group-a",
+                    "team_id": "team-a",
+                    "predicted_position": 1,
+                }
+            ],
+            actual_standings_by_group_team={
+                ("group-a", "team-a"): {
+                    "actual_position": actual_position,
+                    "qualified_to_ro32": actual_position <= 2,
+                    "qualified_as_best_third": False,
+                }
+            },
+        )
+
+        self.assertEqual(len(events), 1)
+        return events[0]
+
+    def test_group_wildcard_correct_gets_base_points_times_two_bonus(self):
+        event = self.score_for(1)
+
+        self.assertEqual(event["points"], GROUP_EXACT_POINTS * 2)
+
+    def test_group_standing_plus_wildcard_total_is_base_points_times_three(self):
+        events = []
+        group_predictions = [
+            {
+                "user_id": "user-1",
+                "group_id": "group-a",
+                "team_id": "team-a",
+                "predicted_position": 1,
+            }
+        ]
+        actual_standings_by_group_team = {
+            ("group-a", "team-a"): {
+                "actual_position": 1,
+                "qualified_to_ro32": True,
+                "qualified_as_best_third": False,
+            }
+        }
+
+        build_group_standing_score_events(
+            events=events,
+            group_predictions=group_predictions,
+            actual_standings_by_group_team=actual_standings_by_group_team,
+        )
+        build_group_wildcard_score_events(
+            events=events,
+            group_wildcards=[
+                {
+                    "user_id": "user-1",
+                    "group_id": "group-a",
+                    "team_id": "team-a",
+                    "predicted_position": 1,
+                }
+            ],
+            group_predictions=group_predictions,
+            actual_standings_by_group_team=actual_standings_by_group_team,
+        )
+
+        self.assertEqual(
+            sum(event["points"] for event in events),
+            GROUP_EXACT_POINTS * 3,
+        )
+
+    def test_group_wildcard_wrong_loses_base_points_times_three(self):
+        event = self.score_for(4)
+
+        self.assertEqual(event["points"], GROUP_EXACT_POINTS * -3)
 
 
 class MeaningfulUnderdogDetectionTests(unittest.TestCase):
@@ -152,10 +242,56 @@ class KnockoutWildcardScoringTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         return events[0]
 
-    def test_knockout_wildcard_correct_gets_round_points_times_three(self):
+    def test_knockout_wildcard_correct_gets_round_points_times_two_bonus(self):
         event = self.score_for("team-a")
 
-        self.assertEqual(event["points"], ROUND_POINTS["QUARTER_FINAL"] * 3)
+        self.assertEqual(event["points"], ROUND_POINTS["QUARTER_FINAL"] * 2)
+
+    def test_knockout_prediction_plus_wildcard_total_is_round_points_times_three(self):
+        events = []
+        matches_by_id = {
+            "match-1": {
+                "id": "match-1",
+                "stage": "QUARTER_FINAL",
+                "team_a_id": "team-a",
+                "team_b_id": "team-b",
+                "actual_winner_team_id": "team-a",
+            }
+        }
+        knockout_predictions = [
+            {
+                "user_id": "user-1",
+                "match_id": "match-1",
+                "predicted_winner_team_id": "team-a",
+            }
+        ]
+
+        build_knockout_prediction_score_events(
+            events=events,
+            knockout_predictions=knockout_predictions,
+            matches_by_id=matches_by_id,
+            teams_by_id={
+                "team-a": {"id": "team-a"},
+                "team-b": {"id": "team-b"},
+            },
+        )
+        build_knockout_wildcard_score_events(
+            events=events,
+            knockout_wildcards=[
+                {
+                    "user_id": "user-1",
+                    "wildcard_round": "QUARTER_FINAL",
+                    "team_id": "team-a",
+                }
+            ],
+            knockout_predictions=knockout_predictions,
+            matches_by_id=matches_by_id,
+        )
+
+        self.assertEqual(
+            sum(event["points"] for event in events),
+            ROUND_POINTS["QUARTER_FINAL"] * 3,
+        )
 
     def test_knockout_wildcard_wrong_loses_round_points_times_three(self):
         event = self.score_for("team-b")

@@ -12,6 +12,7 @@ GROUP_EXACT_POINTS = 5
 GROUP_DIRECT_QUALIFIED_WRONG_POSITION_POINTS = 2
 GROUP_BEST_THIRD_POINTS = 1
 GROUP_WILDCARD_MULTIPLIER = 3
+WILDCARD_BONUS_MULTIPLIER = GROUP_WILDCARD_MULTIPLIER - 1
 GROUP_MATCH_POINTS = 1
 MEANINGFUL_UNDERDOG_RANK_GAP = 3
 MEANINGFUL_UNDERDOG_POINTS_GAP = 10
@@ -426,8 +427,11 @@ def build_group_wildcard_score_events(
         )
 
         if base_points > 0:
-            points = base_points * GROUP_WILDCARD_MULTIPLIER
-            description = f"Group wildcard correct/partially correct. Base {base_points} x3."
+            points = base_points * WILDCARD_BONUS_MULTIPLIER
+            description = (
+                "Group wildcard correct/partially correct. "
+                f"Bonus {base_points} x{WILDCARD_BONUS_MULTIPLIER}."
+            )
         else:
             points = -GROUP_EXACT_POINTS * GROUP_WILDCARD_MULTIPLIER
             description = "Group wildcard wrong. Lost x3."
@@ -553,13 +557,17 @@ def build_knockout_wildcard_score_events(
             continue
 
         round_points = ROUND_POINTS.get(wildcard_round, 0)
-        wildcard_points = round_points * 3
+        wildcard_bonus_points = round_points * WILDCARD_BONUS_MULTIPLIER
+        wildcard_penalty_points = round_points * GROUP_WILDCARD_MULTIPLIER
 
         if actual_winner_team_id == team_id:
-            points = wildcard_points
-            description = f"Knockout wildcard correct for {wildcard_round}. {round_points} x3."
+            points = wildcard_bonus_points
+            description = (
+                f"Knockout wildcard correct for {wildcard_round}. "
+                f"Bonus {round_points} x{WILDCARD_BONUS_MULTIPLIER}."
+            )
         else:
-            points = -wildcard_points
+            points = -wildcard_penalty_points
             description = f"Knockout wildcard wrong for {wildcard_round}. Lost {round_points} x3."
 
         add_score_event(
