@@ -107,13 +107,86 @@ type GroupMatchPrediction = {
   matchday?: number | null;
 };
 
+type KnockoutRound =
+  | "ROUND_OF_32"
+  | "ROUND_OF_16"
+  | "QUARTER_FINAL"
+  | "SEMI_FINAL"
+  | "FINAL";
+
+type KnockoutMatch = {
+  id: string;
+  stage?: string | null;
+  round_name?: string | null;
+  match_round?: KnockoutRound | string | null;
+  team_a_id?: string | null;
+  team_b_id?: string | null;
+  match_date?: string | null;
+  actual_winner_team_id?: string | null;
+  status?: string | null;
+  team_a?: Team | null;
+  team_b?: Team | null;
+};
+
+type KnockoutPrediction = {
+  id?: string;
+  match_id: string;
+  predicted_winner_team_id: string;
+  team?: Team | null;
+  team_id?: string | null;
+  match?: KnockoutMatch | null;
+  match_round?: KnockoutRound | string | null;
+  round_name?: string | null;
+};
+
+type KnockoutWildcard = {
+  id?: string;
+  wildcard_round: KnockoutRound | string;
+  round_label?: string | null;
+  team_id: string;
+  team?: Team | null;
+  prediction?: KnockoutPrediction | null;
+};
+
 type Outcome = "TEAM_A_WIN" | "DRAW" | "TEAM_B_WIN";
+
+type BreakdownTab = "GROUP_STANDINGS" | "GROUP_MATCHES" | KnockoutRound;
 
 type PointsBreakdown = {
   standing: number;
   wildcard: number;
   total: number;
 };
+
+type MatchPointsBreakdown = {
+  base: number;
+  wildcard: number;
+  total: number;
+};
+
+const KNOCKOUT_ROUND_LABELS: Record<string, string> = {
+  ROUND_OF_32: "Round of 32",
+  ROUND_OF_16: "Round of 16",
+  QUARTER_FINAL: "Quarter Final",
+  SEMI_FINAL: "Semi Final",
+  FINAL: "Final",
+};
+
+const KNOCKOUT_ROUND_POINTS: Record<string, number> = {
+  ROUND_OF_32: 5,
+  ROUND_OF_16: 10,
+  QUARTER_FINAL: 15,
+  SEMI_FINAL: 20,
+  FINAL: 30,
+};
+
+const KNOCKOUT_ROUND_ORDER: KnockoutRound[] = [
+  "ROUND_OF_32",
+  "ROUND_OF_16",
+  "QUARTER_FINAL",
+  "SEMI_FINAL",
+  "FINAL",
+];
 
 function formatScoreDate(value?: string | null) {
   if (!value) return "";
@@ -143,6 +216,27 @@ function getOutcomeLabel(outcome?: Outcome | string | null, match?: GroupMatch) 
   if (outcome === "TEAM_B_WIN") return `${match?.team_b?.name || "Team B"} win`;
 
   return outcome;
+}
+
+function getKnockoutRoundLabel(round?: string | null) {
+  if (!round) return "Knockout";
+
+  return KNOCKOUT_ROUND_LABELS[round] || round;
+}
+
+function getKnockoutMatchRound(match?: KnockoutMatch | null) {
+  return match?.match_round || match?.stage || match?.round_name || null;
+}
+
+function getKnockoutWinnerLabel(
+  teamId?: string | null,
+  match?: KnockoutMatch | null
+) {
+  if (!teamId) return "Pending";
+  if (teamId === match?.team_a_id) return `${match?.team_a?.name || "Team A"} win`;
+  if (teamId === match?.team_b_id) return `${match?.team_b?.name || "Team B"} win`;
+
+  return "Unknown winner";
 }
 
 function normalizeTeamName(name?: string | null) {
@@ -188,6 +282,12 @@ export default function HomePage() {
     GroupMatchPrediction[]
   >([]);
   const [groupMatches, setGroupMatches] = useState<GroupMatch[]>([]);
+  const [knockoutPredictions, setKnockoutPredictions] = useState<
+    KnockoutPrediction[]
+  >([]);
+  const [knockoutWildcards, setKnockoutWildcards] = useState<
+    KnockoutWildcard[]
+  >([]);
   const [selectedBadgeKey, setSelectedBadgeKey] = useState<string | null>(null);
   const [selectingBadgeKey, setSelectingBadgeKey] = useState<string | null>(
     null
@@ -195,6 +295,8 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "breakdown" | "badges"
   >("dashboard");
+  const [activeBreakdownTab, setActiveBreakdownTab] =
+    useState<BreakdownTab>("GROUP_STANDINGS");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -258,6 +360,46 @@ export default function HomePage() {
     });
   }, [groupMatchPredictions, matchById]);
 
+  const knockoutWildcardByRoundTeam = useMemo(() => {
+    const wildcards = new Map<string, KnockoutWildcard>();
+
+    knockoutWildcards.forEach((wildcard) => {
+      wildcards.set(`${wildcard.wildcard_round}:${wildcard.team_id}`, wildcard);
+    });
+
+    return wildcards;
+  }, [knockoutWildcards]);
+
+  const sortedKnockoutPredictions = useMemo(() => {
+    return [...knockoutPredictions].sort((a, b) => {
+      const matchA = a.match;
+      const matchB = b.match;
+      const dateA = matchA?.match_date || "";
+      const dateB = matchB?.match_date || "";
+
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+
+      return getKnockoutRoundLabel(getKnockoutMatchRound(matchA)).localeCompare(
+        getKnockoutRoundLabel(getKnockoutMatchRound(matchB))
+      );
+    });
+  }, [knockoutPredictions]);
+
+  const activeKnockoutPredictions = useMemo(() => {
+    if (
+      activeBreakdownTab === "GROUP_STANDINGS" ||
+      activeBreakdownTab === "GROUP_MATCHES"
+    ) {
+      return [];
+    }
+
+    return sortedKnockoutPredictions.filter((prediction) => {
+      const round = prediction.match_round || getKnockoutMatchRound(prediction.match);
+
+      return round === activeBreakdownTab;
+    });
+  }, [activeBreakdownTab, sortedKnockoutPredictions]);
+
   function getStandingPoints(prediction: GroupPrediction): PointsBreakdown {
     const standingKey = `${prediction.group_id}:${prediction.team_id}`;
     const wildcardKey = `${standingKey}:${prediction.predicted_position}`;
@@ -278,6 +420,35 @@ export default function HomePage() {
       standing,
       wildcard: normalizedWildcard,
       total: standing + normalizedWildcard,
+    };
+  }
+
+  function getKnockoutPredictionPoints(
+    prediction: KnockoutPrediction
+  ): MatchPointsBreakdown {
+    const match = prediction.match;
+    const round = prediction.match_round || getKnockoutMatchRound(match) || "";
+    const wildcard = knockoutWildcardByRoundTeam.get(
+      `${round}:${prediction.predicted_winner_team_id}`
+    );
+    const base = getScoreEventPoints(
+      scoreEvents,
+      "KNOCKOUT_PREDICTION",
+      prediction.match_id
+    );
+    const rawWildcard = wildcard
+      ? getScoreEventPoints(scoreEvents, "KNOCKOUT_WILDCARD", String(round))
+      : 0;
+    const roundPoints = KNOCKOUT_ROUND_POINTS[String(round)] || 0;
+    const targetWildcardBonus =
+      roundPoints > 0 ? roundPoints * 3 - base : rawWildcard;
+    const normalizedWildcard =
+      base > 0 && rawWildcard > 0 ? targetWildcardBonus : rawWildcard;
+
+    return {
+      base,
+      wildcard: normalizedWildcard,
+      total: base + normalizedWildcard,
     };
   }
 
@@ -323,6 +494,8 @@ export default function HomePage() {
           groupWildcardsResponse,
           groupMatchPredictionsResponse,
           groupMatchesResponse,
+          knockoutPredictionsResponse,
+          knockoutWildcardsResponse,
         ] = await Promise.all([
           fetch(`${API_BASE_URL}/scoring/me`, {
             headers: {
@@ -357,6 +530,18 @@ export default function HomePage() {
           fetch(`${API_BASE_URL}/matches/group-stage`, {
             cache: "no-store",
           }),
+          fetch(`${API_BASE_URL}/knockout-predictions/with-teams`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE_URL}/knockout-wildcards/with-teams`, {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            cache: "no-store",
+          }),
         ]);
 
         const scoreResult: ScoreResponse | null = await scoreResponse
@@ -373,6 +558,12 @@ export default function HomePage() {
           .json()
           .catch(() => null);
         const groupMatchesResult = await groupMatchesResponse
+          .json()
+          .catch(() => null);
+        const knockoutPredictionsResult = await knockoutPredictionsResponse
+          .json()
+          .catch(() => null);
+        const knockoutWildcardsResult = await knockoutWildcardsResponse
           .json()
           .catch(() => null);
 
@@ -411,6 +602,14 @@ export default function HomePage() {
 
         if (groupMatchesResponse.ok && groupMatchesResult) {
           setGroupMatches(groupMatchesResult.data || []);
+        }
+
+        if (knockoutPredictionsResponse.ok && knockoutPredictionsResult) {
+          setKnockoutPredictions(knockoutPredictionsResult.data || []);
+        }
+
+        if (knockoutWildcardsResponse.ok && knockoutWildcardsResult) {
+          setKnockoutWildcards(knockoutWildcardsResult.data || []);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
@@ -527,38 +726,40 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="mb-6 grid grid-cols-3 gap-2 rounded-3xl border border-white/10 bg-white/5 p-2">
-          <button
-            onClick={() => setActiveTab("dashboard")}
-            className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
-              activeTab === "dashboard"
-                ? "bg-yellow-500/20 text-yellow-100"
-                : "text-slate-400 hover:bg-white/5"
-            }`}
-          >
-            Dashboard
-          </button>
+        <div className="mb-6 space-y-2 rounded-3xl border border-white/10 bg-white/5 p-2">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setActiveTab("dashboard")}
+              className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
+                activeTab === "dashboard"
+                  ? "bg-yellow-500/20 text-yellow-100"
+                  : "text-slate-400 hover:bg-white/5"
+              }`}
+            >
+              Dashboard
+            </button>
+
+            <button
+              onClick={() => setActiveTab("badges")}
+              className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
+                activeTab === "badges"
+                  ? "bg-yellow-500/20 text-yellow-100"
+                  : "text-slate-400 hover:bg-white/5"
+              }`}
+            >
+              Badges
+            </button>
+          </div>
 
           <button
             onClick={() => setActiveTab("breakdown")}
-            className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
+            className={`w-full rounded-2xl px-4 py-3 text-sm font-black transition ${
               activeTab === "breakdown"
                 ? "bg-yellow-500/20 text-yellow-100"
                 : "text-slate-400 hover:bg-white/5"
             }`}
           >
-            Breakdown
-          </button>
-
-          <button
-            onClick={() => setActiveTab("badges")}
-            className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
-              activeTab === "badges"
-                ? "bg-yellow-500/20 text-yellow-100"
-                : "text-slate-400 hover:bg-white/5"
-            }`}
-          >
-            Badges
+            Points Breakdown
           </button>
         </div>
 
@@ -691,8 +892,32 @@ export default function HomePage() {
                   </p>
                 </div>
               </div>
+
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {[
+                  { key: "GROUP_STANDINGS" as BreakdownTab, label: "Group Standings" },
+                  { key: "GROUP_MATCHES" as BreakdownTab, label: "Group Matches" },
+                  ...KNOCKOUT_ROUND_ORDER.map((round) => ({
+                    key: round as BreakdownTab,
+                    label: getKnockoutRoundLabel(round),
+                  })),
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveBreakdownTab(tab.key)}
+                    className={`shrink-0 rounded-2xl px-4 py-2 text-xs font-black transition ${
+                      activeBreakdownTab === tab.key
+                        ? "bg-yellow-500/20 text-yellow-100"
+                        : "bg-white/5 text-slate-400 hover:bg-white/10"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
+            {activeBreakdownTab === "GROUP_STANDINGS" && (
             <div className="wc-card p-5">
               <div className="mb-4">
                 <p className="wc-gold text-xs font-black uppercase tracking-[0.22em]">
@@ -783,7 +1008,9 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+            )}
 
+            {activeBreakdownTab === "GROUP_MATCHES" && (
             <div className="wc-card p-5">
               <div className="mb-4">
                 <p className="wc-gold text-xs font-black uppercase tracking-[0.22em]">
@@ -886,6 +1113,120 @@ export default function HomePage() {
                 </div>
               )}
             </div>
+            )}
+
+            {activeBreakdownTab !== "GROUP_STANDINGS" &&
+              activeBreakdownTab !== "GROUP_MATCHES" && (
+            <div className="wc-card p-5">
+              <div className="mb-4">
+                <p className="wc-gold text-xs font-black uppercase tracking-[0.22em]">
+                  Knockouts
+                </p>
+                <h3 className="mt-1 text-xl font-black">
+                  {getKnockoutRoundLabel(activeBreakdownTab)} Outcomes And Points
+                </h3>
+              </div>
+
+              {activeKnockoutPredictions.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center">
+                  <p className="font-black">
+                    No {getKnockoutRoundLabel(activeBreakdownTab)} picks saved yet.
+                  </p>
+                  <p className="wc-muted mt-1 text-sm">
+                    This phase will appear here after you submit predictions for it.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeKnockoutPredictions.map((prediction) => {
+                    const match = prediction.match;
+                    const round = prediction.match_round || getKnockoutMatchRound(match);
+                    const points = getKnockoutPredictionPoints(prediction);
+                    const wildcard = knockoutWildcardByRoundTeam.get(
+                      `${round}:${prediction.predicted_winner_team_id}`
+                    );
+
+                    return (
+                      <div
+                        key={prediction.match_id}
+                        className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                              <span className="rounded-full bg-white/10 px-2 py-1 font-black text-slate-200">
+                                {getKnockoutRoundLabel(round)}
+                              </span>
+                              {match?.match_date && (
+                                <span>{formatScoreDate(match.match_date)}</span>
+                              )}
+                              {wildcard && (
+                                <span className="rounded-full bg-yellow-400/10 px-2 py-1 font-black text-yellow-200">
+                                  Wildcard
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-lg font-black">
+                              {match?.team_a?.name || "Team A"} vs{" "}
+                              {match?.team_b?.name || "Team B"}
+                            </p>
+                          </div>
+
+                          <div
+                            className={`rounded-2xl px-3 py-2 text-lg font-black ${
+                              points.total >= 0
+                                ? "bg-green-500/10 text-green-300"
+                                : "bg-red-500/10 text-red-300"
+                            }`}
+                          >
+                            {formatPoints(points.total)}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-2 md:grid-cols-3">
+                          <div className="rounded-2xl bg-white/5 p-3">
+                            <p className="wc-muted text-xs font-bold uppercase">
+                              Your Pick
+                            </p>
+                            <p className="mt-1 font-black">
+                              {getKnockoutWinnerLabel(
+                                prediction.predicted_winner_team_id,
+                                match
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white/5 p-3">
+                            <p className="wc-muted text-xs font-bold uppercase">
+                              Actual Winner
+                            </p>
+                            <p className="mt-1 font-black">
+                              {getKnockoutWinnerLabel(
+                                match?.actual_winner_team_id,
+                                match
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl bg-white/5 p-3">
+                            <p className="wc-muted text-xs font-bold uppercase">
+                              Points
+                            </p>
+                            <p className="mt-1 font-black">
+                              Base {formatPoints(points.base)}
+                              {wildcard &&
+                                ` + wildcard ${formatPoints(points.wildcard)}`}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            )}
           </div>
         ) : (
           <div className="wc-card p-5">

@@ -557,14 +557,22 @@ def build_knockout_wildcard_score_events(
             continue
 
         round_points = ROUND_POINTS.get(wildcard_round, 0)
-        wildcard_bonus_points = round_points * WILDCARD_BONUS_MULTIPLIER
+        related_prediction_points = sum(
+            int(event.get("points") or 0)
+            for event in events
+            if event.get("user_id") == user_id
+            and event.get("source_type") == "KNOCKOUT_PREDICTION"
+            and event.get("source_key") == related_prediction.get("match_id")
+        )
+        wildcard_target_points = round_points * GROUP_WILDCARD_MULTIPLIER
+        wildcard_bonus_points = wildcard_target_points - related_prediction_points
         wildcard_penalty_points = round_points * GROUP_WILDCARD_MULTIPLIER
 
         if actual_winner_team_id == team_id:
             points = wildcard_bonus_points
             description = (
                 f"Knockout wildcard correct for {wildcard_round}. "
-                f"Bonus {round_points} x{WILDCARD_BONUS_MULTIPLIER}."
+                f"Total target {round_points} x3."
             )
         else:
             points = -wildcard_penalty_points

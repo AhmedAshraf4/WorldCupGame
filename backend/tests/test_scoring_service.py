@@ -213,7 +213,19 @@ class MeaningfulUnderdogDetectionTests(unittest.TestCase):
 
 class KnockoutWildcardScoringTests(unittest.TestCase):
     def score_for(self, actual_winner_team_id):
-        events = []
+        events = [
+            {
+                "user_id": "user-1",
+                "source_type": "KNOCKOUT_PREDICTION",
+                "source_key": "match-1",
+                "points": (
+                    ROUND_POINTS["QUARTER_FINAL"]
+                    if actual_winner_team_id == "team-a"
+                    else 0
+                ),
+                "description": "Existing knockout prediction event.",
+            }
+        ]
         build_knockout_wildcard_score_events(
             events=events,
             knockout_wildcards=[
@@ -239,8 +251,8 @@ class KnockoutWildcardScoringTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(len(events), 1)
-        return events[0]
+        self.assertEqual(len(events), 2)
+        return events[1]
 
     def test_knockout_wildcard_correct_gets_round_points_times_two_bonus(self):
         event = self.score_for("team-a")
@@ -282,6 +294,52 @@ class KnockoutWildcardScoringTests(unittest.TestCase):
                     "user_id": "user-1",
                     "wildcard_round": "QUARTER_FINAL",
                     "team_id": "team-a",
+                }
+            ],
+            knockout_predictions=knockout_predictions,
+            matches_by_id=matches_by_id,
+        )
+
+        self.assertEqual(
+            sum(event["points"] for event in events),
+            ROUND_POINTS["QUARTER_FINAL"] * 3,
+        )
+
+    def test_knockout_underdog_prediction_plus_wildcard_total_is_round_points_times_three(self):
+        events = []
+        matches_by_id = {
+            "match-1": {
+                "id": "match-1",
+                "stage": "QUARTER_FINAL",
+                "team_a_id": "underdog",
+                "team_b_id": "favorite",
+                "actual_winner_team_id": "underdog",
+            }
+        }
+        knockout_predictions = [
+            {
+                "user_id": "user-1",
+                "match_id": "match-1",
+                "predicted_winner_team_id": "underdog",
+            }
+        ]
+
+        build_knockout_prediction_score_events(
+            events=events,
+            knockout_predictions=knockout_predictions,
+            matches_by_id=matches_by_id,
+            teams_by_id={
+                "underdog": {"id": "underdog", "fifa_rank": 25},
+                "favorite": {"id": "favorite", "fifa_rank": 5},
+            },
+        )
+        build_knockout_wildcard_score_events(
+            events=events,
+            knockout_wildcards=[
+                {
+                    "user_id": "user-1",
+                    "wildcard_round": "QUARTER_FINAL",
+                    "team_id": "underdog",
                 }
             ],
             knockout_predictions=knockout_predictions,
