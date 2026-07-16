@@ -110,6 +110,7 @@ const ROUND_LABELS: Record<string, string> = {
   ROUND_OF_16: "Round of 16",
   QUARTER_FINAL: "Quarter Final",
   SEMI_FINAL: "Semi Final",
+  THIRD_PLACE: "Third Place",
   FINAL: "Final",
 };
 
