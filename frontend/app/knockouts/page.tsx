@@ -90,6 +90,13 @@ function normalizeRound(value?: string | null) {
   if (text.includes("16")) return "ROUND_OF_16";
   if (text.includes("quarter")) return "QUARTER_FINAL";
   if (text.includes("semi")) return "SEMI_FINAL";
+  if (
+    text.includes("third place") ||
+    text.includes("3rd place") ||
+    text.includes("bronze")
+  ) {
+    return "THIRD_PLACE";
+  }
   if (text === "final" || text.includes(" final")) return "FINAL";
 
   return null;
@@ -100,7 +107,13 @@ function getRoundLabel(match: KnockoutMatch) {
 }
 
 function getRoundKey(match: KnockoutMatch) {
-  return normalizeRound(getRoundLabel(match));
+  const round = normalizeRound(getRoundLabel(match));
+
+  return round === "THIRD_PLACE" ? "FINAL" : round;
+}
+
+function getMatchPoints(match: KnockoutMatch) {
+  return normalizeRound(getRoundLabel(match)) === "THIRD_PLACE" ? 10 : 30;
 }
 
 function getRoundOption(key: RoundKey) {
@@ -665,6 +678,8 @@ export default function KnockoutsPage() {
               const selectedWinner = selectedWinnerByMatchId[match.id];
               const matchOpen = isMatchOpen(match);
               const deadlinePassed = !isMatchDeadlineOpen(match);
+              const isThirdPlace =
+                normalizeRound(getRoundLabel(match)) === "THIRD_PLACE";
               const underdogTeamId = getMeaningfulUnderdogTeamId(
                 match.team_a,
                 match.team_b
@@ -681,6 +696,12 @@ export default function KnockoutsPage() {
                         <Shield className="h-3 w-3 text-yellow-300" />
                         {getRoundLabel(match)}
                       </span>
+
+                      {activeRound === "FINAL" && (
+                        <span className="rounded-full bg-yellow-400/10 px-3 py-1 font-black text-yellow-200">
+                          {getMatchPoints(match)} points
+                        </span>
+                      )}
 
                       <span className="flex items-center gap-1">
                         <CalendarDays className="h-4 w-4" />
@@ -704,7 +725,9 @@ export default function KnockoutsPage() {
                     <TeamOption
                       team={match.team_a}
                       selected={selectedWinner === match.team_a_id}
-                      isUnderdog={underdogTeamId === match.team_a_id}
+                      isUnderdog={
+                        !isThirdPlace && underdogTeamId === match.team_a_id
+                      }
                       disabled={!matchOpen}
                       onClick={() => selectWinner(match.id, match.team_a_id)}
                     />
@@ -716,7 +739,9 @@ export default function KnockoutsPage() {
                     <TeamOption
                       team={match.team_b}
                       selected={selectedWinner === match.team_b_id}
-                      isUnderdog={underdogTeamId === match.team_b_id}
+                      isUnderdog={
+                        !isThirdPlace && underdogTeamId === match.team_b_id
+                      }
                       disabled={!matchOpen}
                       onClick={() => selectWinner(match.id, match.team_b_id)}
                     />
@@ -730,7 +755,14 @@ export default function KnockoutsPage() {
                     </div>
                   )}
 
-                  {underdogTeamId && (
+                  {isThirdPlace && (
+                    <div className="mt-3 rounded-2xl border border-blue-300/20 bg-blue-400/10 p-3 text-xs font-bold text-blue-100">
+                      Correct winner earns 10 base points. A Final wildcard on
+                      this prediction uses the 10-point base multiplier.
+                    </div>
+                  )}
+
+                  {underdogTeamId && !isThirdPlace && (
                     <div className="mt-3 rounded-2xl border border-yellow-300/20 bg-yellow-400/10 p-3 text-xs font-bold text-yellow-100">
                       Underdog winner pick scores round points x2 if correct,
                       x-2 if wrong.

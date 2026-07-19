@@ -46,6 +46,7 @@ type KnockoutPredictionOption = {
   team_id: string;
   predicted_winner_team_id?: string;
   wildcard_round: KnockoutWildcardRound;
+  match_round?: string | null;
   round_label: string;
   team: Team | null;
   match?: Record<string, unknown> | null;
@@ -90,6 +91,19 @@ function getMatchStatusFromOption(option?: KnockoutPredictionOption | null) {
   const value = option?.match?.status;
 
   return typeof value === "string" ? value : null;
+}
+
+function getOptionBasePoints(option?: KnockoutPredictionOption | null) {
+  const pointsByRound: Record<string, number> = {
+    ROUND_OF_32: 5,
+    ROUND_OF_16: 10,
+    QUARTER_FINAL: 15,
+    SEMI_FINAL: 20,
+    THIRD_PLACE: 10,
+    FINAL: 30,
+  };
+
+  return pointsByRound[String(option?.match_round || "")] || 0;
 }
 
 function isLockGateOpen(lock?: LockStatus) {
@@ -617,8 +631,9 @@ export default function KnockoutWildcardsPage() {
                 </h2>
 
                 <p className="text-sm text-yellow-100/90">
-                  Select one team from your {currentGroup.round_label} predicted
-                  winners.
+                  {currentRound === "FINAL"
+                    ? "Select one team from your Final or Third Place predicted winners. The multiplier uses that game's point value."
+                    : `Select one team from your ${currentGroup.round_label} predicted winners.`}
                 </p>
               </div>
 
@@ -674,7 +689,7 @@ export default function KnockoutWildcardsPage() {
                     <div className="w-full text-center">
                       <div className="mb-4 flex justify-center">
                         <div className="rounded-full border border-yellow-400/40 bg-yellow-500/15 px-4 py-2 text-xs font-black text-yellow-200">
-                          {currentGroup.round_label}
+                          {currentPrediction.round_label}
                         </div>
                       </div>
 
@@ -767,7 +782,7 @@ export default function KnockoutWildcardsPage() {
                       </h2>
 
                       <p className="wc-muted mt-1 text-sm">
-                        {currentGroup.round_label} - {currentIndex + 1} /{" "}
+                        {currentPrediction.round_label} · {getOptionBasePoints(currentPrediction)} base points · {currentIndex + 1} /{" "}
                         {currentOptions.length}
                       </p>
 

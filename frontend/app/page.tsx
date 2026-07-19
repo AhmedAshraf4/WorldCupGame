@@ -112,6 +112,7 @@ type KnockoutRound =
   | "ROUND_OF_16"
   | "QUARTER_FINAL"
   | "SEMI_FINAL"
+  | "THIRD_PLACE"
   | "FINAL";
 
 type KnockoutMatch = {
@@ -169,6 +170,7 @@ const KNOCKOUT_ROUND_LABELS: Record<string, string> = {
   ROUND_OF_16: "Round of 16",
   QUARTER_FINAL: "Quarter Final",
   SEMI_FINAL: "Semi Final",
+  THIRD_PLACE: "Third Place",
   FINAL: "Final",
 };
 
@@ -177,6 +179,7 @@ const KNOCKOUT_ROUND_POINTS: Record<string, number> = {
   ROUND_OF_16: 10,
   QUARTER_FINAL: 15,
   SEMI_FINAL: 20,
+  THIRD_PLACE: 10,
   FINAL: 30,
 };
 
@@ -396,7 +399,10 @@ export default function HomePage() {
     return sortedKnockoutPredictions.filter((prediction) => {
       const round = prediction.match_round || getKnockoutMatchRound(prediction.match);
 
-      return round === activeBreakdownTab;
+      return (
+        round === activeBreakdownTab ||
+        (activeBreakdownTab === "FINAL" && round === "THIRD_PLACE")
+      );
     });
   }, [activeBreakdownTab, sortedKnockoutPredictions]);
 
@@ -428,8 +434,9 @@ export default function HomePage() {
   ): MatchPointsBreakdown {
     const match = prediction.match;
     const round = prediction.match_round || getKnockoutMatchRound(match) || "";
+    const wildcardRound = round === "THIRD_PLACE" ? "FINAL" : round;
     const wildcard = knockoutWildcardByRoundTeam.get(
-      `${round}:${prediction.predicted_winner_team_id}`
+      `${wildcardRound}:${prediction.predicted_winner_team_id}`
     );
     const base = getScoreEventPoints(
       scoreEvents,
@@ -437,7 +444,11 @@ export default function HomePage() {
       prediction.match_id
     );
     const rawWildcard = wildcard
-      ? getScoreEventPoints(scoreEvents, "KNOCKOUT_WILDCARD", String(round))
+      ? getScoreEventPoints(
+          scoreEvents,
+          "KNOCKOUT_WILDCARD",
+          String(wildcardRound)
+        )
       : 0;
     const roundPoints = KNOCKOUT_ROUND_POINTS[String(round)] || 0;
     const targetWildcardBonus =
@@ -1141,9 +1152,11 @@ export default function HomePage() {
                   {activeKnockoutPredictions.map((prediction) => {
                     const match = prediction.match;
                     const round = prediction.match_round || getKnockoutMatchRound(match);
+                    const wildcardRound =
+                      round === "THIRD_PLACE" ? "FINAL" : round;
                     const points = getKnockoutPredictionPoints(prediction);
                     const wildcard = knockoutWildcardByRoundTeam.get(
-                      `${round}:${prediction.predicted_winner_team_id}`
+                      `${wildcardRound}:${prediction.predicted_winner_team_id}`
                     );
 
                     return (

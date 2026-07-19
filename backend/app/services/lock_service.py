@@ -18,6 +18,7 @@ KNOCKOUT_PREDICTION_LOCK_KEYS = {
     "ROUND_OF_16": "KNOCKOUT_PREDICTIONS_ROUND_OF_16",
     "QUARTER_FINAL": "KNOCKOUT_PREDICTIONS_QUARTER_FINAL",
     "SEMI_FINAL": "KNOCKOUT_PREDICTIONS_SEMI_FINAL",
+    "THIRD_PLACE": "KNOCKOUT_PREDICTIONS_FINAL",
     "FINAL": "KNOCKOUT_PREDICTIONS_FINAL",
 }
 
@@ -76,6 +77,9 @@ def normalize_round(value: Any) -> str | None:
 
     if "semi" in text:
         return "SEMI_FINAL"
+
+    if "third place" in text or "3rd place" in text or "bronze" in text:
+        return "THIRD_PLACE"
 
     if text == "final" or " final" in text:
         return "FINAL"

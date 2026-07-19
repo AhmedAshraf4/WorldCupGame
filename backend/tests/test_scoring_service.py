@@ -356,6 +356,130 @@ class KnockoutWildcardScoringTests(unittest.TestCase):
 
         self.assertEqual(event["points"], ROUND_POINTS["QUARTER_FINAL"] * -3)
 
+    def test_correct_final_wildcard_uses_thirty_point_base(self):
+        events = []
+        matches_by_id = {
+            "final-match": {
+                "id": "final-match",
+                "stage": "FINAL",
+                "team_a_id": "team-a",
+                "team_b_id": "team-b",
+                "actual_winner_team_id": "team-a",
+            }
+        }
+        predictions = [{
+            "user_id": "user-1",
+            "match_id": "final-match",
+            "predicted_winner_team_id": "team-a",
+        }]
+        build_knockout_prediction_score_events(
+            events=events,
+            knockout_predictions=predictions,
+            matches_by_id=matches_by_id,
+            teams_by_id={
+                "team-a": {"id": "team-a"},
+                "team-b": {"id": "team-b"},
+            },
+        )
+        build_knockout_wildcard_score_events(
+            events=events,
+            knockout_wildcards=[{
+                "user_id": "user-1",
+                "wildcard_round": "FINAL",
+                "team_id": "team-a",
+            }],
+            knockout_predictions=predictions,
+            matches_by_id=matches_by_id,
+        )
+
+        self.assertEqual(sum(event["points"] for event in events), 90)
+        self.assertEqual(events[-1]["points"], 60)
+
+
+class ThirdPlaceScoringTests(unittest.TestCase):
+    def score_for(self, predicted_team_id, actual_team_id):
+        events = []
+        build_knockout_prediction_score_events(
+            events=events,
+            knockout_predictions=[{
+                "user_id": "user-1",
+                "match_id": "third-place-match",
+                "predicted_winner_team_id": predicted_team_id,
+            }],
+            matches_by_id={
+                "third-place-match": {
+                    "id": "third-place-match",
+                    "stage": "THIRD_PLACE",
+                    "team_a_id": "underdog",
+                    "team_b_id": "favorite",
+                    "actual_winner_team_id": actual_team_id,
+                }
+            },
+            teams_by_id={
+                "underdog": {"id": "underdog", "fifa_rank": 25},
+                "favorite": {"id": "favorite", "fifa_rank": 5},
+            },
+        )
+        return events[0]
+
+    def test_correct_third_place_pick_gets_ten_points_without_underdog_bonus(self):
+        event = self.score_for("underdog", "underdog")
+
+        self.assertEqual(event["points"], 10)
+
+    def test_wrong_third_place_pick_gets_zero_points(self):
+        event = self.score_for("underdog", "favorite")
+
+        self.assertEqual(event["points"], 0)
+
+    def wildcard_total_for(self, actual_team_id):
+        events = []
+        matches_by_id = {
+            "third-place-match": {
+                "id": "third-place-match",
+                "stage": "THIRD_PLACE",
+                "team_a_id": "team-a",
+                "team_b_id": "team-b",
+                "actual_winner_team_id": actual_team_id,
+            }
+        }
+        predictions = [{
+            "user_id": "user-1",
+            "match_id": "third-place-match",
+            "predicted_winner_team_id": "team-a",
+        }]
+        build_knockout_prediction_score_events(
+            events=events,
+            knockout_predictions=predictions,
+            matches_by_id=matches_by_id,
+            teams_by_id={
+                "team-a": {"id": "team-a"},
+                "team-b": {"id": "team-b"},
+            },
+        )
+        build_knockout_wildcard_score_events(
+            events=events,
+            knockout_wildcards=[{
+                "user_id": "user-1",
+                "wildcard_round": "FINAL",
+                "team_id": "team-a",
+            }],
+            knockout_predictions=predictions,
+            matches_by_id=matches_by_id,
+        )
+        return events
+
+    def test_correct_final_wildcard_on_third_place_pick_totals_thirty_points(self):
+        events = self.wildcard_total_for("team-a")
+
+        self.assertEqual(sum(event["points"] for event in events), 30)
+        self.assertEqual(events[-1]["points"], 20)
+
+    def test_wrong_final_wildcard_on_third_place_pick_loses_thirty_points(self):
+        events = self.wildcard_total_for("team-b")
+
+        self.assertEqual(events[-1]["points"], -30)
+
 
 if __name__ == "__main__":
     unittest.main()

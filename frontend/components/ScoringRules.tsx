@@ -52,6 +52,8 @@ const sections = [
       "Round of 16 correct winner: +10 points.",
       "Quarter Final correct winner: +15 points.",
       "Semi Final correct winner: +20 points.",
+      "Third Place correct winner: +10 base points.",
+      "The underdog multiplier does not apply to the Third Place game.",
       "Final correct winner: +30 points.",
       "If you pick a meaningful underdog and they win: round points x2.",
       "If you pick a meaningful underdog and they lose: round points x-2.",
@@ -64,6 +66,8 @@ const sections = [
     accent: "text-red-200",
     items: [
       "Choose one wildcard per knockout round from your predicted winners.",
+      "The Final wildcard can be placed on either the Final or Third Place game.",
+      "A Third Place wildcard uses 10 points; a Final wildcard uses 30 points.",
       "Correct knockout wildcard makes that pick's total +3 x that round's points.",
       "Wrong knockout wildcard: -3 x that round's points.",
     ],

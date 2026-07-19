@@ -115,6 +115,9 @@ def normalize_round(value: Any) -> str | None:
     if "semi" in text:
         return "SEMI_FINAL"
 
+    if "third place" in text or "3rd place" in text or "bronze" in text:
+        return "THIRD_PLACE"
+
     if text == "final" or " final" in text:
         return "FINAL"
 

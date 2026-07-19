@@ -24,6 +24,7 @@ ROUND_POINTS = {
     "ROUND_OF_16": 10,
     "QUARTER_FINAL": 15,
     "SEMI_FINAL": 20,
+    "THIRD_PLACE": 10,
     "FINAL": 30,
 }
 
@@ -274,6 +275,9 @@ def normalize_round(value: Any) -> str | None:
     if "semi" in text:
         return "SEMI_FINAL"
 
+    if "third place" in text or "3rd place" in text or "bronze" in text:
+        return "THIRD_PLACE"
+
     if text == "final" or " final" in text:
         return "FINAL"
 
@@ -477,6 +481,29 @@ def build_knockout_prediction_score_events(
 
         round_points = ROUND_POINTS.get(match_round, 0)
 
+        # The third-place game has a fixed base score and is not affected by
+        # the underdog multiplier. Its Final wildcard is scored separately.
+        if match_round == "THIRD_PLACE":
+            points = (
+                round_points
+                if predicted_winner_team_id == actual_winner_team_id
+                else 0
+            )
+            description = (
+                "Third-place prediction correct."
+                if points > 0
+                else "Third-place prediction wrong."
+            )
+            add_score_event(
+                events=events,
+                user_id=user_id,
+                source_type="KNOCKOUT_PREDICTION",
+                source_key=match_id,
+                points=points,
+                description=description,
+            )
+            continue
+
         underdog_team_id = get_underdog_team_id(match, teams_by_id)
 
         if predicted_winner_team_id == underdog_team_id:
@@ -527,9 +554,12 @@ def build_knockout_wildcard_score_events(
         team_id = prediction.get("predicted_winner_team_id")
         match = matches_by_id.get(prediction.get("match_id"))
         match_round = get_match_round(match)
+        wildcard_round = (
+            "FINAL" if match_round == "THIRD_PLACE" else match_round
+        )
 
-        if user_id and team_id and match_round:
-            prediction_lookup[(user_id, match_round, team_id)] = prediction
+        if user_id and team_id and wildcard_round:
+            prediction_lookup[(user_id, wildcard_round, team_id)] = prediction
 
     for wildcard in knockout_wildcards:
         user_id = wildcard.get("user_id")
@@ -556,7 +586,12 @@ def build_knockout_wildcard_score_events(
         if not actual_winner_team_id:
             continue
 
-        round_points = ROUND_POINTS.get(wildcard_round, 0)
+        match_round = get_match_round(match)
+
+        if not match_round:
+            continue
+
+        round_points = ROUND_POINTS.get(match_round, 0)
         related_prediction_points = sum(
             int(event.get("points") or 0)
             for event in events
@@ -571,12 +606,12 @@ def build_knockout_wildcard_score_events(
         if actual_winner_team_id == team_id:
             points = wildcard_bonus_points
             description = (
-                f"Knockout wildcard correct for {wildcard_round}. "
+                f"Knockout wildcard correct for {match_round}. "
                 f"Total target {round_points} x3."
             )
         else:
             points = -wildcard_penalty_points
-            description = f"Knockout wildcard wrong for {wildcard_round}. Lost {round_points} x3."
+            description = f"Knockout wildcard wrong for {match_round}. Lost {round_points} x3."
 
         add_score_event(
             events=events,

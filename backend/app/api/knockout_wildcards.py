@@ -31,6 +31,7 @@ ROUND_LABELS = {
     "ROUND_OF_16": "Round of 16",
     "QUARTER_FINAL": "Quarter Final",
     "SEMI_FINAL": "Semi Final",
+    "THIRD_PLACE": "Third Place",
     "FINAL": "Final",
 }
 
@@ -100,6 +101,9 @@ def normalize_round(value: str | None) -> str | None:
     if "semi" in text:
         return "SEMI_FINAL"
 
+    if "third place" in text or "3rd place" in text or "bronze" in text:
+        return "THIRD_PLACE"
+
     if "final" in text:
         return "FINAL"
 
@@ -125,6 +129,13 @@ def get_match_round(match: dict | None) -> str | None:
             return normalized
 
     return None
+
+
+def get_wildcard_round(match_round: str | None) -> str | None:
+    if match_round == "THIRD_PLACE":
+        return "FINAL"
+
+    return match_round
 
 
 def sort_by_round(row: dict) -> int:
@@ -198,16 +209,18 @@ def get_user_knockout_predictions_with_data(user_id: str) -> list[dict]:
     for prediction in predictions:
         match = matches_by_id.get(prediction.get("match_id"))
         team_id = prediction.get("predicted_winner_team_id")
-        wildcard_round = get_match_round(match)
+        match_round = get_match_round(match)
+        wildcard_round = get_wildcard_round(match_round)
 
-        if not wildcard_round:
+        if wildcard_round not in ROUND_ORDER:
             continue
 
         enriched.append({
             **prediction,
             "team_id": team_id,
             "wildcard_round": wildcard_round,
-            "round_label": ROUND_LABELS.get(wildcard_round, wildcard_round),
+            "match_round": match_round,
+            "round_label": ROUND_LABELS.get(match_round, match_round),
             "team": teams_by_id.get(team_id),
             "match": match,
         })
