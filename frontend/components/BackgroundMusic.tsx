@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const MUSIC_SRC = "/assets/bg.mp3";
 const MUSIC_VOLUME = 0.35;
+const MUSIC_START_TIME_SECONDS = 2 * 60;
 
 export function BackgroundMusic() {
   const pathname = usePathname();
@@ -13,9 +14,16 @@ export function BackgroundMusic() {
   useEffect(() => {
     if (!audioRef.current) {
       const audio = new Audio(MUSIC_SRC);
-      audio.loop = true;
+      audio.loop = false;
       audio.preload = "auto";
       audio.volume = MUSIC_VOLUME;
+      audio.addEventListener(
+        "loadedmetadata",
+        () => {
+          audio.currentTime = Math.min(MUSIC_START_TIME_SECONDS, audio.duration);
+        },
+        { once: true },
+      );
       audioRef.current = audio;
     }
 
@@ -37,6 +45,12 @@ export function BackgroundMusic() {
       if (!shouldPlay) return;
 
       try {
+        if (
+          audio.readyState >= HTMLMediaElement.HAVE_METADATA &&
+          audio.currentTime < MUSIC_START_TIME_SECONDS
+        ) {
+          audio.currentTime = Math.min(MUSIC_START_TIME_SECONDS, audio.duration);
+        }
         await audio.play();
         removeUnlockListeners();
       } catch {
